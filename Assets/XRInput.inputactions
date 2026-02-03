@@ -1,0 +1,74 @@
+{
+    "name": "XRInput",
+    "maps": [
+        {
+            "name": "New action map",
+            "id": "eb58df23-05a3-4965-a597-8037d0b1b4c1",
+            "actions": [
+                {
+                    "name": "Teleport Mode Activate  ",
+                    "type": "Button",
+                    "id": "1aaed89b-9805-419a-960f-41cebc05da5b",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "Teleport Mode Cancel  ",
+                    "type": "Button",
+                    "id": "4eb79d65-2c3e-4b99-80eb-f723333cbdb8",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "Teleport Select  ",
+                    "type": "Button",
+                    "id": "005717d5-be13-4261-9595-8174424d1759",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                }
+            ],
+            "bindings": [
+                {
+                    "name": "",
+                    "id": "bfb3b2bb-a98d-41ca-aeea-cbb96d03da5d",
+                    "path": "",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Teleport Mode Activate  ",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "3fdef492-c2c3-4ecb-aeb8-3702bbb9f9fd",
+                    "path": "",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Teleport Mode Cancel  ",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "97b7117f-dea5-4375-ab99-b1a841385e35",
+                    "path": "",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Teleport Select  ",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                }
+            ]
+        }
+    ],
+    "controlSchemes": []
+}

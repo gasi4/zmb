@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f4d888d9ba15e3c4e97c487280ea14a4, type: 3}
+  m_Name: Tshirt
+  m_EditorClassIdentifier: 
+  ItemName: folded_clothes
+  WorldPrefab: {fileID: 7787127868583858372, guid: 0d5081901c4230d4d8f43dd811e92b20, type: 3}
+  HandPrefab: {fileID: 7787127868583858372, guid: 0d5081901c4230d4d8f43dd811e92b20, type: 3}
+  Icon: {fileID: -197803561, guid: f352b65e0fc043848a132bf4cb5c4fc1, type: 3}
+  MaxAmount: 1
