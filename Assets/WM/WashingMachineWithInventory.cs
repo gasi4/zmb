@@ -90,7 +90,7 @@ public class WashingMachineWithInventory : WashingMachine
             {
                 machineSlots[i].gameObject.AddComponent<Button>().onClick.AddListener(() =>
                 {
-                    RemoveFromMachine(index, true);
+                    RemoveFromMachine(index);
                 });
             }
             else
@@ -98,7 +98,7 @@ public class WashingMachineWithInventory : WashingMachine
                 existingButton.onClick.RemoveAllListeners();
                 existingButton.onClick.AddListener(() =>
                 {
-                    RemoveFromMachine(index, true);
+                    RemoveFromMachine(index);
                 });
             }
         }
@@ -461,8 +461,13 @@ public class WashingMachineWithInventory : WashingMachine
 
         washedItems.Clear();
 
-        // Очищаем слоты
-        ClearAllSlots();
+        // Очищаем слоты (не вызываем ClearAllSlots/RemoveFromMachine, чтобы не спавнить предметы второй раз)
+        for (int i = 0; i < machineSlots.Count; i++)
+        {
+            if (machineSlots[i] != null)
+                machineSlots[i].ClearSlot();
+        }
+        currentLoad = 0;
 
         if (progressSlider != null)
             progressSlider.value = 1f;

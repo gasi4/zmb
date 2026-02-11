@@ -29,18 +29,21 @@ public class DeliveryPoint : MonoBehaviour
 
         // Важно: для "области" проще всего использовать Trigger
         if (interactionZone != null)
+        {
             interactionZone.isTrigger = true;
+            // Зона нужна только для игрока; для зомби выдачу делаем по pickupRadius (см. Update).
+        }
     }
 
     void Update()
     {
-        // Если есть вещь и зомби, проверяем расстояние
+        // Fallback: если триггер-зона не сработала, все равно отдаем по дистанции
         if (currentItem != null && waitingZombie != null)
         {
-            // Отдаем только когда зомби реально пришел за вещью
             if (waitingZombie.currentState == ZombieCustomer.ZombieState.GoingToDelivery)
             {
-                float distance = Vector3.Distance(waitingZombie.transform.position, transform.position);
+                Transform p = dropPosition != null ? dropPosition : transform;
+                float distance = Vector3.Distance(waitingZombie.transform.position, p.position);
 
                 if (distance <= pickupRadius)
                 {
@@ -50,10 +53,21 @@ public class DeliveryPoint : MonoBehaviour
         }
     }
 
+
+
     // Игрок кладет вещь на точку
     public bool PlaceItem(GameObject item, ZombieCustomer zombie)
     {
         if (currentItem != null) return false;
+        if (item == null || zombie == null) return false;
+
+        // Разрешаем класть только чистую вещь (после стирки)
+        Item itemComp = item.GetComponent<Item>();
+        if (itemComp == null || !itemComp.isClean)
+        {
+            Debug.LogWarning("DeliveryPoint: нельзя положить грязную вещь — сначала постирай её.");
+            return false;
+        }
 
         currentItem = item;
         waitingZombie = zombie;
@@ -96,13 +110,29 @@ public class DeliveryPoint : MonoBehaviour
     {
         if (currentItem == null || waitingZombie == null) return;
 
-        // Отдаем вещь зомби
-        waitingZombie.PickupItemFromPoint(); // ← Просто вызываем метод зомби
+        // Удаляем вещь со сцены (чтобы она не оставалась лежать на полке)
+        Destroy(currentItem);
+
+        // Уведомляем зомби
+        waitingZombie.PickupItemFromPoint();
 
         // Очищаем точку
         ClearPoint();
 
         Debug.Log("Вещь отдана зомби!");
+    }
+
+    // На случай если зомби сам вызвал PickupItemFromPoint() (например, из SimpleZombieMovement.OnReachedTarget)
+    public void ForceClearForZombie(ZombieCustomer zombie)
+    {
+        if (zombie == null) return;
+        if (waitingZombie == null) return;
+        if (zombie != waitingZombie) return;
+
+        if (currentItem != null)
+            Destroy(currentItem);
+
+        ClearPoint();
     }
 
     void ClearPoint()

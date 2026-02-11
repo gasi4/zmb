@@ -266,7 +266,8 @@ public class FinalPlayerController : MonoBehaviour
 
             // В очереди зомби может перейти в GettingAngry, но он всё ещё ждёт выдачу.
             if (zombie.currentState == ZombieCustomer.ZombieState.Waiting ||
-                zombie.currentState == ZombieCustomer.ZombieState.GettingAngry)
+                zombie.currentState == ZombieCustomer.ZombieState.GettingAngry ||
+                zombie.currentState == ZombieCustomer.ZombieState.Angry)
             {
                 float distance = Vector3.Distance(transform.position, zombie.transform.position);
                 if (distance < minDistance)

@@ -61,15 +61,25 @@ public class CustomerQueueManager : MonoBehaviour
 
     public void RemoveZombie(ZombieCustomer zombie)
     {
-        // Удаляем зомби из занятой точки (если он ещё числится в очереди)
+        // Чистим уничтоженные ссылки (если зомби был Destroy без корректного выхода)
+        CleanupDestroyed();
+
+        // Удаляем зомби из занятой точки (без модификации Dictionary во время foreach)
+        Transform keyToRemove = null;
         foreach (var kvp in occupiedPoints)
         {
             if (kvp.Value == zombie)
             {
-                occupiedPoints.Remove(kvp.Key);
+                keyToRemove = kvp.Key;
                 break;
             }
         }
+
+        if (keyToRemove != null)
+            occupiedPoints.Remove(keyToRemove);
+
+        // После освобождения точки двигаем очередь вперёд
+        ShiftQueueForward();
 
         // Освободившееся место заполняем новым зомби из очереди (если есть)
         AssignZombieToSpot();
@@ -101,9 +111,33 @@ public class CustomerQueueManager : MonoBehaviour
         return occupiedPoints.TryGetValue(servicePoints[0], out ZombieCustomer front) && front == zombie;
     }
 
+    void CleanupDestroyed()
+    {
+        if (occupiedPoints == null || occupiedPoints.Count == 0) return;
+
+        // Собираем ключи отдельно, чтобы не модифицировать словарь во время перебора
+        List<Transform> toRemove = null;
+        foreach (var kvp in occupiedPoints)
+        {
+            if (kvp.Value == null)
+            {
+                if (toRemove == null) toRemove = new List<Transform>();
+                toRemove.Add(kvp.Key);
+            }
+        }
+
+        if (toRemove != null)
+        {
+            foreach (var k in toRemove)
+                occupiedPoints.Remove(k);
+        }
+    }
+
     void ShiftQueueForward()
     {
         if (servicePoints == null || servicePoints.Length == 0) return;
+
+        CleanupDestroyed();
 
         for (int i = 0; i < servicePoints.Length - 1; i++)
         {

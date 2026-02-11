@@ -1,8 +1,10 @@
-using UnityEngine;
+п»їusing UnityEngine;
 using UnityEngine.UI;
 public class PlayerHealth : MonoBehaviour
 {
-    [Header("Здоровье")]
+    private bool isDead = false;
+
+    [Header("пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ")]
     public float maxHealth = 100f;
     public float currentHealth;
 
@@ -10,60 +12,86 @@ public class PlayerHealth : MonoBehaviour
     public Slider healthSlider;
     public Image damageFlash;
 
-    [Header("Настройки")]
+    void UpdateHealthUI()
+    {
+        if (healthSlider == null) return;
+        healthSlider.minValue = 0f;
+        healthSlider.maxValue = maxHealth;
+        healthSlider.value = currentHealth;
+    }
+
+    public void BindUI(Slider slider, Image flash)
+    {
+        healthSlider = slider;
+        damageFlash = flash;
+
+        UpdateHealthUI();
+
+        if (damageFlash != null)
+            damageFlash.color = Color.clear;
+    }
+
+    [Header("пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ")]
     public float zombieDamage = 10f;
     public float damageCooldown = 1f;
 
-    private float lastDamageTime = 0f;
+    private float lastDamageTime = -999f;
 
     void Start()
     {
         currentHealth = maxHealth;
 
-        if (healthSlider != null)
-        {
-            healthSlider.maxValue = maxHealth;
-            healthSlider.value = currentHealth;
-        }
+        UpdateHealthUI();
+
+        if (damageFlash != null)
+            damageFlash.color = Color.clear;
     }
 
-    void OnTriggerEnter(Collider other)
+    void OnTriggerStay(Collider other)
     {
-        if (other.CompareTag("Zombie"))
-        {
-            TakeDamage(zombieDamage);
+        // Р’РђР–РќРћ: СѓСЂРѕРЅ РѕС‚ Р·РѕРјР±Рё С‚РµРїРµСЂСЊ СЃС‡РёС‚Р°РµС‚СЃСЏ РІ ZombieCustomer.TryAttack() РїРѕ РґРёСЃС‚Р°РЅС†РёРё.
+        // Р­С‚РѕС‚ С‚СЂРёРіРіРµСЂ РѕСЃС‚Р°РІР»СЏР» СЌС„С„РµРєС‚ "РЅСѓР¶РЅРѕ РІРєР»СЋС‡РёС‚СЊ IsTrigger/РїРѕРјРµРЅСЏС‚СЊ РІС‹СЃРѕС‚Сѓ, С‡С‚РѕР±С‹ Р±РёР»Рё",
+        // Рё РјРѕРі РґР°РІР°С‚СЊ РґРІРѕР№РЅРѕР№ СѓСЂРѕРЅ. РћС‚РєР»СЋС‡Р°РµРј.
+        return;
+        if (other == null) return;
 
-            // Отталкиваем зомби
-            ZombieCustomer zombie = other.GetComponent<ZombieCustomer>();
-            if (zombie != null)
-            {
-                // Можно добавить отбрасывание
-            }
-        }
+        // Р”Р»СЏ XR/СЂР°Р·РЅС‹С… РїСЂРµС„Р°Р±РѕРІ Р·РѕРјР±Рё С‚РµРі РјРѕР¶РµС‚ СЃС‚РѕСЏС‚СЊ РЅРµ РЅР° РєРѕСЂРЅРµРІРѕРј РєРѕР»Р»Р°Р№РґРµСЂРµ.
+        // РџРѕСЌС‚РѕРјСѓ РїСЂРѕРІРµСЂСЏРµРј ZombieCustomer РІ СЂРѕРґРёС‚РµР»СЏС…, Р° С‚РµРі РґРµР»Р°РµРј РѕРїС†РёРѕРЅР°Р»СЊРЅС‹Рј.
+        if (!(other.CompareTag("Zombie") || other.GetComponentInParent<ZombieCustomer>() != null))
+            return;
+
+        // РЈСЂРѕРЅ С‚РѕР»СЊРєРѕ РѕС‚ Р°РіСЂРµСЃСЃРёРІРЅРѕРіРѕ Р·РѕРјР±Рё
+        ZombieCustomer zombie = other.GetComponentInParent<ZombieCustomer>();
+        if (zombie == null || zombie.currentState != ZombieCustomer.ZombieState.Angry)
+            return;
+
+        // РќР°РЅРѕСЃРёРј СѓСЂРѕРЅ РїРѕСЃС‚РѕСЏРЅРЅРѕ РїСЂРё РєРѕРЅС‚Р°РєС‚Рµ (РѕРіСЂР°РЅРёС‡РµРЅРёРµ РїРѕ damageCooldown РІРЅСѓС‚СЂРё TakeDamage)
+        TakeDamage(zombieDamage);
     }
 
-    void TakeDamage(float damage)
+    public void TakeDamage(float damage)
     {
         if (Time.time - lastDamageTime < damageCooldown) return;
 
-        currentHealth -= damage;
+        currentHealth = Mathf.Clamp(currentHealth - damage, 0f, maxHealth);
         lastDamageTime = Time.time;
 
-        // Обновляем UI
-        if (healthSlider != null)
-            healthSlider.value = currentHealth;
+        UpdateHealthUI();
 
-        // Эффект повреждения
+        if (healthSlider == null)
+            Debug.LogWarning("PlayerHealth: healthSlider РЅРµ РїСЂРёРІСЏР·Р°РЅ вЂ” HP СѓРјРµРЅСЊС€Р°РµС‚СЃСЏ, РЅРѕ UI РЅРµ РѕР±РЅРѕРІРёС‚СЃСЏ");
+
+        // пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
         if (damageFlash != null)
             StartCoroutine(FlashDamage());
 
-        // Проверяем смерть
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
         if (currentHealth <= 0)
         {
             Die();
         }
 
-        Debug.Log($"Игрок получил урон: {damage}. Здоровье: {currentHealth}");
+        Debug.Log($"пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ: {damage}. пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ: {currentHealth}");
     }
 
     System.Collections.IEnumerator FlashDamage()
@@ -75,16 +103,15 @@ public class PlayerHealth : MonoBehaviour
 
     void Die()
     {
-        Debug.Log("Игрок умер!");
-        // Здесь: экран Game Over, перезапуск уровня и т.д.
+        if (isDead) return;
+        isDead = true;
 
-        // Отключаем управление
+        // РћС‚РєР»СЋС‡Р°РµРј СѓРїСЂР°РІР»РµРЅРёРµ
         var playerController = GetComponent<FinalPlayerController>();
         if (playerController != null)
             playerController.SetInputEnabled(false);
 
-        // Показываем курсор
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
+        // Р­РєСЂР°РЅ РїРѕСЂР°Р¶РµРЅРёСЏ
+        GameOverUI.Show();
     }
 }

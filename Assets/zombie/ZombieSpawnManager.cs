@@ -26,9 +26,28 @@ public class ZombieSpawnManager : MonoBehaviour
     [Header("Очередь")]
     public CustomerQueueManager queueManager;
 
-    [Header("Волны")]
+    [Header("Волны (сложность)")]
+    [Tooltip("Лёгкие волны (будут использованы если в настройках выбрана Easy)")]
+    public Wave[] easyWaves;
+
+    [Tooltip("Нормальные волны (будут использованы если в настройках выбрана Normal)")]
+    public Wave[] normalWaves;
+
+    [Tooltip("Тяжёлые волны (будут использованы если в настройках выбрана Hard)")]
+    public Wave[] hardWaves;
+
+    [Header("Волны (legacy)")]
+    [Tooltip("Если easy/normal/hard не заполнены — будет использован этот массив")]
     public Wave[] waves;
+
+    [Tooltip("Зациклить волны (если выключено — после последней волны показываем победу)")]
     public bool loopWaves = false;
+
+    [Header("Лимиты")]
+    [Min(1)] public int maxWaves = 10;
+
+    [Header("UI")]
+    public TMPro.TextMeshProUGUI waveCounterText; // формат: N/10
 
     [Header("Debug")]
     public bool debugMode = true;
@@ -65,37 +84,52 @@ public class ZombieSpawnManager : MonoBehaviour
         if (queueManager == null)
             queueManager = FindObjectOfType<CustomerQueueManager>();
 
+        Wave[] selected = GetSelectedWaves();
+
         if (debugMode)
         {
-            int wavesCount = waves != null ? waves.Length : 0;
-            Debug.Log($"ZombieSpawnManager: запуск. waves={wavesCount}, loopWaves={loopWaves}");
+            int wavesCount = selected != null ? selected.Length : 0;
+            int diff = PlayerPrefs.GetInt("settings.difficulty", 1);
+            Debug.Log($"ZombieSpawnManager: запуск. difficulty={diff}, waves={wavesCount}, loopWaves={loopWaves}, maxWaves={maxWaves}");
         }
 
         if (wavesCoroutine != null)
             StopCoroutine(wavesCoroutine);
 
-        wavesCoroutine = StartCoroutine(RunWaves());
+        wavesCoroutine = StartCoroutine(RunWaves(selected));
     }
 
-    IEnumerator RunWaves()
+    IEnumerator RunWaves(Wave[] selectedWaves)
     {
-        if (waves == null || waves.Length == 0)
+        if (selectedWaves == null || selectedWaves.Length == 0)
         {
-            Debug.LogWarning("ZombieSpawnManager: waves не настроены!");
+            Debug.LogWarning("ZombieSpawnManager: waves не настроены (selectedWaves пустой)!");
             yield break;
         }
+
+        int totalWaves = Mathf.Min(selectedWaves.Length, Mathf.Max(1, maxWaves));
 
         int waveIndex = 0;
         while (true)
         {
-            if (waveIndex >= waves.Length)
+            if (waveIndex >= totalWaves)
             {
-                if (!loopWaves) yield break;
+                if (!loopWaves)
+                {
+                    // Все волны пройдены (не больше 10), и последняя волна уже дождалась ухода всех зомби
+                    VictoryUI.Show();
+                    yield break;
+                }
                 waveIndex = 0;
             }
 
-            Wave wave = waves[waveIndex];
-            if (debugMode) Debug.Log($"🌊 Старт волны {waveIndex + 1}: {wave.waveName}");
+            Wave wave = selectedWaves[waveIndex];
+
+            // UI: счетчик волн
+            if (waveCounterText != null)
+                waveCounterText.text = $"{waveIndex + 1}/{totalWaves}";
+
+            if (debugMode) Debug.Log($"🌊 Старт волны {waveIndex + 1}/{totalWaves}: {wave.waveName}");
 
             if (wave.waveStartDelay > 0f)
                 yield return new WaitForSeconds(wave.waveStartDelay);
@@ -215,6 +249,23 @@ public class ZombieSpawnManager : MonoBehaviour
     {
         if (zombie == null) return;
         activeZombies.Remove(zombie);
+    }
+
+    Wave[] GetSelectedWaves()
+    {
+        // 0=Easy, 1=Normal, 2=Hard (как в MainMenuUI)
+        int diff = PlayerPrefs.GetInt("settings.difficulty", 1);
+
+        Wave[] selected = null;
+        if (diff == 0) selected = easyWaves;
+        else if (diff == 2) selected = hardWaves;
+        else selected = normalWaves;
+
+        // fallback на legacy waves
+        if (selected == null || selected.Length == 0)
+            selected = waves;
+
+        return selected;
     }
 
     public List<ZombieCustomer> GetActiveZombies() => activeZombies;

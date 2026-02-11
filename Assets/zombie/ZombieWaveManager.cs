@@ -51,6 +51,7 @@ public class ZombieWaveManager : MonoBehaviour
     private List<ZombieCustomer> activeZombies = new List<ZombieCustomer>();
     private int zombiesSpawnedInCurrentWave = 0;
     private int zombiesKilledInCurrentWave = 0;
+    private int zombiesDespawnedInCurrentWave = 0;
     private bool isWaveActive = false;
     private Coroutine spawnCoroutine;
 
@@ -128,6 +129,7 @@ public class ZombieWaveManager : MonoBehaviour
         activeZombies.Clear();
         zombiesSpawnedInCurrentWave = 0;
         zombiesKilledInCurrentWave = 0;
+        zombiesDespawnedInCurrentWave = 0;
         isWaveActive = true;
 
         // Обновляем UI
@@ -260,7 +262,7 @@ public class ZombieWaveManager : MonoBehaviour
         return spawnPoints[Random.Range(0, spawnPoints.Length)];
     }
 
-    // Вызывается зомби когда он уходит или его убивают
+    // Вызывается зомби когда он завершил "обслуживание" (получил вещь/ушёл в агр и т.п.)
     public void OnZombieFinished(ZombieCustomer zombie)
     {
         if (activeZombies.Contains(zombie))
@@ -282,9 +284,21 @@ public class ZombieWaveManager : MonoBehaviour
         }
     }
 
+    // Вызывается когда объект зомби реально уничтожен (Destroy) — нужно для победного экрана
+    public void OnZombieDespawned(ZombieCustomer zombie)
+    {
+        zombiesDespawnedInCurrentWave++;
+
+        if (testMode)
+            Debug.Log($"🧹 Зомби исчез (Destroy). Despawned: {zombiesDespawnedInCurrentWave}");
+    }
+
     void CompleteCurrentWave()
     {
         isWaveActive = false;
+
+        // Запоминаем размер текущей волны (до инкремента индекса)
+        int finishedWaveZombieCount = waves[currentWaveIndex].zombiesCount;
 
         // Звук завершения волны
         if (waveCompleteSound != null && audioSource != null)
@@ -310,8 +324,15 @@ public class ZombieWaveManager : MonoBehaviour
         }
         else
         {
-            GameComplete();
+            // Победа должна показываться только после того, как последний зомби реально ушёл (Destroy)
+            StartCoroutine(WaitLastZombieDespawnThenComplete(finishedWaveZombieCount));
         }
+    }
+
+    IEnumerator WaitLastZombieDespawnThenComplete(int expectedDespawnCount)
+    {
+        yield return new WaitUntil(() => zombiesDespawnedInCurrentWave >= expectedDespawnCount);
+        GameComplete();
     }
 
     IEnumerator StartNextWaveWithDelay(float delay)
@@ -371,6 +392,9 @@ public class ZombieWaveManager : MonoBehaviour
 
         if (testMode)
             Debug.Log("🎮 ИГРА ЗАВЕРШЕНА! Все волны пройдены.");
+
+        // В этом проекте победный экран показывает ZombieSpawnManager.
+        // (ZombieWaveManager может оставаться в сцене для UI, но победу не триггерит.)
     }
 
     // Метод для принудительного запуска волны (для тестирования)

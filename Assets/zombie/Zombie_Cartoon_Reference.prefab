@@ -1,6 +1,6 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!1001 &6625030100382952089
+--- !u!1001 &6262320010466340012
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
@@ -62,54 +62,62 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: c3543ee10a04bd340b8a8787af6d367d, type: 3}
       propertyPath: m_Name
-      value: Zombie_Cartoon_Reference 1
+      value: Zombie_Cartoon_Reference
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: c3543ee10a04bd340b8a8787af6d367d, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: c3543ee10a04bd340b8a8787af6d367d, type: 3}
       propertyPath: m_TagString
       value: Zombie
       objectReference: {fileID: 0}
+    - target: {fileID: 5866666021909216657, guid: c3543ee10a04bd340b8a8787af6d367d, type: 3}
+      propertyPath: m_Controller
+      value: 
+      objectReference: {fileID: 9100000, guid: 81e973f599ce1a04798b83d76006aece, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: c3543ee10a04bd340b8a8787af6d367d, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 8514140212102255403}
+      addedObject: {fileID: 2091458856614770532}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: c3543ee10a04bd340b8a8787af6d367d, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 3333692570575167631}
+      addedObject: {fileID: 2715586154122230954}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: c3543ee10a04bd340b8a8787af6d367d, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 5155135635775691613}
+      addedObject: {fileID: 473098525526637115}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: c3543ee10a04bd340b8a8787af6d367d, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 41399892479239678}
+      addedObject: {fileID: 7865811389308043563}
   m_SourcePrefab: {fileID: 100100000, guid: c3543ee10a04bd340b8a8787af6d367d, type: 3}
---- !u!1 &6283009764739094472 stripped
+--- !u!1 &6496815262047113725 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: c3543ee10a04bd340b8a8787af6d367d, type: 3}
-  m_PrefabInstance: {fileID: 6625030100382952089}
+  m_PrefabInstance: {fileID: 6262320010466340012}
   m_PrefabAsset: {fileID: 0}
---- !u!114 &8514140212102255403
+--- !u!114 &2091458856614770532
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 6283009764739094472}
+  m_GameObject: {fileID: 6496815262047113725}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2bf699fc18e19bd45a2edeb4294719bd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  waitTime: 30
+  animator: {fileID: 0}
+  attackTrigger: Attack
+  isAttackingBool: IsAttack
+  useIsAttackingBool: 0
+  waitTime: 10
   patienceDecreaseRate: 1
   walkSpeed: 15
-  angrySpeed: 4
+  angrySpeed: 7
   spawnPoint: {fileID: 0}
   servicePoint: {fileID: 0}
   playerTarget: {fileID: 0}
@@ -128,16 +136,20 @@ MonoBehaviour:
   patienceUI: {fileID: 0}
   patienceUIPrefab: {fileID: 0}
   useSimpleMovement: 1
+  interactionDistance: 1
+  attackDamage: 25
+  attackCooldown: 1
+  attackRange: 7
   testMode: 0
   itemSpawnedSuccessfully: 1
   currentState: 0
---- !u!136 &3333692570575167631
+--- !u!136 &2715586154122230954
 CapsuleCollider:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 6283009764739094472}
+  m_GameObject: {fileID: 6496815262047113725}
   m_Material: {fileID: 0}
   m_IncludeLayers:
     serializedVersion: 2
@@ -146,21 +158,21 @@ CapsuleCollider:
     serializedVersion: 2
     m_Bits: 0
   m_LayerOverridePriority: 0
-  m_IsTrigger: 0
+  m_IsTrigger: 1
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.5
-  m_Height: 1.9835824
+  m_Radius: 0.7
+  m_Height: 1.9095621
   m_Direction: 1
-  m_Center: {x: 0, y: 0.97491777, z: 0}
---- !u!54 &5155135635775691613
+  m_Center: {x: 0, y: 0.93790686, z: 0}
+--- !u!54 &473098525526637115
 Rigidbody:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 6283009764739094472}
+  m_GameObject: {fileID: 6496815262047113725}
   serializedVersion: 4
   m_Mass: 1
   m_Drag: 0
@@ -177,17 +189,17 @@ Rigidbody:
   m_ImplicitCom: 1
   m_ImplicitTensor: 1
   m_UseGravity: 0
-  m_IsKinematic: 1
+  m_IsKinematic: 0
   m_Interpolate: 0
   m_Constraints: 4
   m_CollisionDetection: 0
---- !u!114 &41399892479239678
+--- !u!114 &7865811389308043563
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 6283009764739094472}
+  m_GameObject: {fileID: 6496815262047113725}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: ff70de5bfa1943f439f9d12eb4565d9f, type: 3}
@@ -195,5 +207,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   target: {fileID: 0}
   speed: 10
-  stoppingDistance: 1
+  stoppingDistance: 0.3
   rotationSpeed: 5
+  animator: {fileID: 0}
+  speedParam: Speed
+  setIsMovingBool: 0
+  isMovingParam: IsMoving
+  penetrationSkin: 0.02
