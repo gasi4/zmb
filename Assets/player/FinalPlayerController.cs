@@ -1,6 +1,8 @@
 ﻿using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using UnityEngine.XR.Interaction.Toolkit;
+
 
 public class FinalPlayerController : MonoBehaviour
 {
@@ -16,8 +18,18 @@ public class FinalPlayerController : MonoBehaviour
 
     [Header("VR References")]
     public Transform rightHandTransform;
-    public XRController rightController;
-    public InputHelpers.Button grabButton = InputHelpers.Button.Trigger;
+    public ActionBasedController rightController;
+    public ActionBasedController leftController;
+
+
+    [Header("VR Input Actions (Action-based XRI)")]
+    [Tooltip("Экшен для правого стика (Vector2). В XRI обычно: XRI RightHand/Turn или похожий.")]
+    public InputActionProperty rightStick;
+
+    [Tooltip("Если задан — используется для взгляда вместо rightStick.")]
+    public InputActionProperty lookAction;
+
+
 
     [Header("Editor Movement Settings")]
     public float mouseSensitivity = 2f;
@@ -30,15 +42,27 @@ public class FinalPlayerController : MonoBehaviour
     [Header("VR Hold")]
     public float holdDistance = 0.5f;
     public float holdSmoothness = 15f;
+    [Header("VR Look (Right Stick)")]
+    public float lookSensitivity = 90f; // градусов/сек при значении стика = 1
+    public float maxPitch = 80f;
+
+
 
     [Header("Inventory")]
     public InventoryManager inventoryManager;
     public KeyCode inventoryToggleKey = KeyCode.Tab;
     public KeyCode pickupKey = KeyCode.E; // Кнопка для подбора предметов
-
     private GameObject heldObject = null;
     private Rigidbody heldRigidbody = null;
     private float xRotation = 0f;
+    private float yaw = 0f;
+
+
+    [Header("VR Inventory Toggle (Action-based)")]
+    public InputActionProperty vrInventoryToggleAction; // кнопка на левом контроллере
+    public float vrToggleDebounce = 0.25f;
+    private float _nextAllowedVrToggleTime;
+
 
     [Header("Inventory Sync")]
     public bool syncInventoryWithHand = true;
@@ -69,58 +93,107 @@ public class FinalPlayerController : MonoBehaviour
             {
                 unifiedRay.rightHandTransform = rightHandTransform;
             }
+
+            // ВАЖНО: значение из инспектора может переопределять дефолт в коде,
+            // поэтому принудительно держим дистанцию не меньше 10.
+            deliveryInteractionRange = Mathf.Max(deliveryInteractionRange, 10f);
+
+
+
+            if (playerCamera != null)
+            {
+                Vector3 e = playerCamera.localEulerAngles;
+                yaw = e.y;
+                xRotation = NormalizeAngle(e.x);
+            }
         }
 
-        // ВАЖНО: значение из инспектора может переопределять дефолт в коде,
-        // поэтому принудительно держим дистанцию не меньше 10.
-        deliveryInteractionRange = Mathf.Max(deliveryInteractionRange, 10f);
     }
 
     public void SetInputEnabled(bool value)
     {
         inputEnabled = value;
+
+        void HandleVRLook()
+        {
+            if (playerCamera == null) return;
+
+            InputAction a = lookAction.action != null ? lookAction.action : rightStick.action;
+            if (a == null) return;
+
+            Vector2 stick = a.ReadValue<Vector2>();
+
+            float dt = Time.deltaTime;
+
+            yaw += stick.x * lookSensitivity * dt;
+            xRotation -= stick.y * lookSensitivity * dt;
+            xRotation = Mathf.Clamp(xRotation, -maxPitch, maxPitch);
+
+            playerCamera.localRotation = Quaternion.Euler(xRotation, yaw, 0f);
+        }
+
+    }
+
+    static float NormalizeAngle(float angle)
+    {
+        angle %= 360f;
+        if (angle > 180f) angle -= 360f;
+        return angle;
     }
 
     void Update()
     {
-        // 1️⃣ Всегда проверяем TAB
+        if (vrModeActive)
+        {
+            HandleVRLook();
+        }
+        // Editor fallback
         if (Input.GetKeyDown(inventoryToggleKey))
+            inventoryManager?.ToggleInventory();
+
+        if (!vrModeActive) return;
+
+        HandleVRInventoryToggle();
+        HandleVRLook();
+    }
+
+    void HandleVRInventoryToggle()
+    {
+        if (inventoryManager == null) return;
+        if (vrInventoryToggleAction.action == null) return;
+        if (!vrInventoryToggleAction.action.enabled) return;
+        if (Time.time < _nextAllowedVrToggleTime) return;
+
+        bool pressed = vrInventoryToggleAction.action.ReadValue<float>() > 0.5f;
+
+        if (pressed)
         {
-            if (inventoryManager != null)
-            {
-                inventoryManager.ToggleInventory();
-            }
+            inventoryManager.ToggleInventory();
+            _nextAllowedVrToggleTime = Time.time + vrToggleDebounce;
         }
+    }
 
-        // 2️⃣ Проверка UI других элементов (инвентарь или стиральная машина)
-        bool inventoryOpen = inventoryManager != null && inventoryManager.isOpened;
-        bool washingMachineOpen = IsWashingMachineUIOpen();
+    void HandleVRLook()
+    {
+        if (playerCamera == null) return;
 
-        if (washingMachineOpen)
-        {
-            // Если открыта стиралка, блокируем управление
-            return;
-        }
+        InputAction action =
+            lookAction.action != null && lookAction.action.enabled
+                ? lookAction.action
+                : rightStick.action;
 
-        // 3️⃣ Если инвентарь открыт, не блокируем проверку TAB (она уже сработала),
-        // но можно блокировать остальное управление игроком
-        if (!inventoryOpen)
-        {
-            if (!inputEnabled) return;
+        if (action == null || !action.enabled) return;
 
-            HandleEditorMode();
+        Vector2 stick = action.ReadValue<Vector2>();
+        if (stick.sqrMagnitude < 0.0001f) return;
 
-            // Одна кнопка E:
-            // - если в руке есть предмет -> пытаемся положить на DeliveryPoint
-            // - если руки пустые -> подбираем/взаимодействуем лучом
-            if (Input.GetKeyDown(pickupKey) || Input.GetKeyDown(placeOnDeliveryKey))
-            {
-                if (heldObject != null)
-                    TryPlaceOnDeliveryPoint();
-                else
-                    TryPickupItem();
-            }
-        }
+        float dt = Time.deltaTime;
+
+        yaw += stick.x * lookSensitivity * dt;
+        xRotation -= stick.y * lookSensitivity * dt;
+        xRotation = Mathf.Clamp(xRotation, -maxPitch, maxPitch);
+
+        playerCamera.localRotation = Quaternion.Euler(xRotation, yaw, 0f);
     }
 
     // ДОБАВЛЕНО: Метод для попытки положить вещь на Delivery Point
@@ -663,18 +736,22 @@ public class FinalPlayerController : MonoBehaviour
     {
         if (rightController == null || unifiedRay == null) return;
 
-        bool pressed;
-        rightController.inputDevice.IsPressed(grabButton, out pressed);
+        if (rightController.selectAction == null) return;
+
+        bool pressed = rightController.selectAction.action.ReadValue<float>() > 0.5f;
 
         if (pressed)
         {
-            if (heldObject == null) TryGrab();
+            if (heldObject == null)
+                TryGrab();
         }
         else
         {
-            if (heldObject != null) Drop();
+            if (heldObject != null)
+                Drop();
         }
     }
+
     #endregion
 
     // Дополнительные методы

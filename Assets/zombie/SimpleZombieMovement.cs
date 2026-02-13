@@ -1,6 +1,5 @@
-﻿using System.Collections;
-using UnityEngine;
-using static UnityEngine.GraphicsBuffer;
+﻿using UnityEngine;
+using System.Collections;
 
 public class SimpleZombieMovement : MonoBehaviour
 {
@@ -11,7 +10,7 @@ public class SimpleZombieMovement : MonoBehaviour
     public float rotationSpeed = 5f;
 
     [Header("Компоненты")]
-    private bool isMoving = true;
+    [HideInInspector] public bool isMoving = true;
     private bool isInitialized = false;
     private Collider selfCol;
 
@@ -27,6 +26,7 @@ public class SimpleZombieMovement : MonoBehaviour
 
     [Header("Anti-penetration")]
     public float penetrationSkin = 0.02f;
+
 
     void Start()
     {
@@ -99,34 +99,59 @@ public class SimpleZombieMovement : MonoBehaviour
     {
         if (!isInitialized) return;
 
-        // Анимация: скорость/движение (даже если нет цели, пусть будет Idle)
+        // Анимация: скорость/движение
         UpdateAnimMovement();
 
         if (target == null || !isMoving) return;
 
-        // Ищем коллайдер цели и идём к ближайшей точке на нём, чтобы не заходить "внутрь".
-        // ВАЖНО: trigger-зоны не должны влиять на остановку.
+        // Ищем коллайдер цели
         Collider targetCol = target.GetComponentInChildren<Collider>();
         bool canUseClosestPoint = targetCol != null && !targetCol.isTrigger;
 
-        // Но для игрока (XR rig/CharacterController и т.п.) ClosestPoint часто даёт точки "сбоку",
-        // из-за чего зомби прижимается/входит в игрока. Поэтому в этом случае используем transform.position.
-        bool isPlayerTarget = target.CompareTag("Player") || target.GetComponentInParent<PlayerHealth>() != null;
-        Vector3 aimPoint = (canUseClosestPoint && !isPlayerTarget) ? targetCol.ClosestPoint(transform.position) : target.position;
+        // Является ли цель игроком
+        bool isPlayerTarget =
+            target.CompareTag("Player") ||
+            target.GetComponentInParent<PlayerHealth>() != null;
 
-        // Рассчитываем направление ИГНОРИРУЯ ВЫСОТУ (Y)
+        // Точка, к которой идём
+        Vector3 aimPoint =
+            (canUseClosestPoint && !isPlayerTarget)
+            ? targetCol.ClosestPoint(transform.position)
+            : target.position;
+
+        // Направление (без Y)
         Vector3 targetPos = new Vector3(aimPoint.x, transform.position.y, aimPoint.z);
         Vector3 direction = (targetPos - transform.position).normalized;
 
-        // Проверяем дистанцию (игнорируем высоту Y)
+        // Дистанция по XZ
         float distance = Vector3.Distance(
             new Vector3(transform.position.x, 0, transform.position.z),
             new Vector3(aimPoint.x, 0, aimPoint.z)
         );
 
-        // Небольшой допуск, чтобы зомби гарантированно "считал" цель достигнутой
-        // даже если анти-пенетрация/ClosestPoint держат дистанцию чуть > stoppingDistance.
         const float arriveEpsilon = 0.05f;
+
+        // ===================== 🔴 ГЛАВНЫЙ ФИКС 🔴 =====================
+        // Если цель — игрок и мы уже на нужной дистанции → СТОИМ, НЕ ДВИГАЕМСЯ
+        if (isPlayerTarget && distance <= stoppingDistance)
+        {
+            isMoving = false;
+            UpdateAnimMovement();
+
+            // Только поворачиваемся к игроку
+            if (direction != Vector3.zero)
+            {
+                Quaternion lookRot = Quaternion.LookRotation(direction);
+                transform.rotation = Quaternion.Slerp(
+                    transform.rotation,
+                    lookRot,
+                    rotationSpeed * Time.deltaTime
+                );
+            }
+
+            return; // ⛔ НЕ даём логике движения идти дальше
+        }
+        // =============================================================
 
         if (distance > stoppingDistance + arriveEpsilon)
         {
@@ -134,51 +159,43 @@ public class SimpleZombieMovement : MonoBehaviour
             if (direction != Vector3.zero)
             {
                 Quaternion targetRotation = Quaternion.LookRotation(direction);
-                transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
+                transform.rotation = Quaternion.Slerp(
+                    transform.rotation,
+                    targetRotation,
+                    rotationSpeed * Time.deltaTime
+                );
             }
 
-            // НЕ даём пересечь stoppingDistance даже при большом шаге за кадр
+            // Ограничиваем шаг, чтобы не перескочить stoppingDistance
             float maxStep = speed * Time.deltaTime;
             float allowedStep = Mathf.Max(0f, distance - stoppingDistance);
             float step = Mathf.Min(maxStep, allowedStep);
 
             if (step > 0f)
                 transform.position += direction * step;
-
-            // Дебаг-информация (раз в секунду)
-            if (Time.frameCount % 60 == 0)
-            {
-                string tName = target != null ? target.name : "null";
-                Debug.Log($"{gameObject.name}: Идет к цели '{tName}'. Dist={distance:F2}. Self={transform.position}. TargetPos={aimPoint}");
-            }
         }
-
         else
         {
-            // Достигли цели
+            // Достигли цели (НЕ игрок)
             ZombieCustomer zombie = GetComponent<ZombieCustomer>();
-            bool isAngry = zombie != null && zombie.currentState == ZombieCustomer.ZombieState.Angry;
+            bool isAngry = zombie != null &&
+                           zombie.currentState == ZombieCustomer.ZombieState.Angry;
 
-            // В агре не "останавливаемся навсегда" — зомби должен продолжать преследование/атаки.
             if (!isAngry)
             {
                 isMoving = false;
                 UpdateAnimMovement();
-                Debug.Log($"✅ {gameObject.name} достиг цели! Позиция: {transform.position}");
                 OnReachedTarget();
-                // После достижения цели прекращаем дальнейшие вычисления на этом кадре,
-                // иначе ComputePenetration может продолжать "выталкивать" и зомби начинает кружить.
                 return;
             }
         }
 
-        // Жёсткий анти-проход через коллайдер цели: если мы пересеклись — выталкиваемся наружу.
-        // ВАЖНО: trigger-коллайдеры (например interactionZone у DeliveryPoint) НЕ должны выталкивать,
-        // иначе зомби физически не сможет войти в зону и "застрянет" с дистанцией ~10.
+        // Анти-пенетрация (оставляем, но теперь она почти не срабатывает)
         if (selfCol != null && targetCol != null && !targetCol.isTrigger)
         {
             Vector3 dir;
             float distPen;
+
             if (Physics.ComputePenetration(
                     selfCol, transform.position, transform.rotation,
                     targetCol, targetCol.transform.position, targetCol.transform.rotation,
@@ -235,7 +252,7 @@ public class SimpleZombieMovement : MonoBehaviour
         }
     }
 
-    void UpdateAnimMovement()
+    public void UpdateAnimMovement()
     {
         if (animator == null) return;
         if (!animator.isActiveAndEnabled) return;
@@ -243,12 +260,9 @@ public class SimpleZombieMovement : MonoBehaviour
 
         // Если Animator на другом объекте (не на корне зомби), то этот MonoBehaviour
         // может быть на другом transform и не знать, движется ли модель.
-        // Поэтому выставляем Speed по фактической скорости перемещения КОРНЯ (transform зомби),
-        // иначе при движении root-объекта скорость AnimatorTransform может оставаться ~0
-        // и контроллер будет всегда уходить в Idle.
-        Transform animTf = transform;
+        // Поэтому выставляем Speed по фактической скорости перемещения объекта, на котором висит animator.
+        Transform animTf = animator.transform;
         float realSpeed = 0f;
-
         if (_lastAnimPosInitialized)
         {
             realSpeed = Vector3.Distance(animTf.position, _lastAnimPos) / Mathf.Max(0.0001f, Time.deltaTime);
@@ -262,7 +276,6 @@ public class SimpleZombieMovement : MonoBehaviour
         }
         _lastAnimPos = animTf.position;
         _lastAnimPosInitialized = true;
-        ;
 
         // Нормализуем скорость в диапазон 0..1 (Animator обычно использует пороги вроде 0.1).
         float normalized = (speed > 0.0001f) ? (realSpeed / speed) : realSpeed;
@@ -276,39 +289,40 @@ public class SimpleZombieMovement : MonoBehaviour
         // Speed (float)
         if (!string.IsNullOrEmpty(speedParam))
             animator.SetFloat(speedParam, targetSpeed);
+
         // IsMoving (bool) — опционально, чтобы не ломать существующий Animator
         if (setIsMovingBool && !string.IsNullOrEmpty(isMovingParam))
             animator.SetBool(isMovingParam, targetSpeed > 0.05f);
     }
 
-
     private Vector3 _lastAnimPos;
     private bool _lastAnimPosInitialized = false;
 
     // УДАЛЯЕМ OnControllerColliderHit - он был только для CharacterController
-    // Вместо него можно добавить простую проверку столкновений если нуж
+    // Вместо него можно добавить простую проверку столкновений если нужно
+
     void OnDrawGizmosSelected()
     {
+        // Визуализация в редакторе
+        if (target != null)
         {
-            // Визуализация в редакторе
-            if (target != null)
-            {
-                Gizmos.color = Color.yellow;
-                Gizmos.DrawLine(transform.position, target.position);
-                Gizmos.DrawWireSphere(target.position, 0.5f);
+            Gizmos.color = Color.yellow;
+            Gizmos.DrawLine(transform.position, target.position);
+            Gizmos.DrawWireSphere(target.position, 0.5f);
+        }
+    }
 
-            }
+    void OnEnable()
+    {
+        // На старте/после включения задаём стартовую точку для расчёта скорости анимации,
+        // чтобы не получать 0 и не уходить в Idle на первые кадры.
+        if (animator == null)
+            animator = GetComponentInChildren<Animator>(true);
 
-            void OnEnable()
-            {
-                // На старте/после включения задаём стартовую точку для расчёта скорости анимации,
-                // чтобы не получать 0 и не уходить в Idle на первые кадры.
-                if (animator == null)
-                    animator = GetComponentInChildren<Animator>(true);
-
-                _lastAnimPos = transform.position;
-                _lastAnimPosInitialized = true;
-            }
+        if (animator != null)
+        {
+            _lastAnimPos = animator.transform.position;
+            _lastAnimPosInitialized = true;
         }
     }
 }

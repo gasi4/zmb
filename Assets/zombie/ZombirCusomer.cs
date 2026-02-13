@@ -1,8 +1,11 @@
 ﻿
 using System.Collections;
 using System.Collections.Generic;
+using System.Net;
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.UI;
+using static ZombieCustomer;
 
 public class ZombieCustomer : MonoBehaviour
 {
@@ -89,7 +92,10 @@ public class ZombieCustomer : MonoBehaviour
     public float attackDamage = 25f;
     public float attackCooldown = 1f;
     public float attackRange = 1.6f;
+    [Tooltip("На какой дистанции зомби должен ОСТАНАВЛИВАТЬСЯ при атаке (чтобы не вплотную входить в игрока).")]
+    public float attackStopDistance = 1.4f;
     private float lastAttackTime = -999f;
+
     private PlayerHealth cachedPlayerHealth;
     private Coroutine attackCoroutine;
 
@@ -109,6 +115,7 @@ public class ZombieCustomer : MonoBehaviour
     private bool waveManagerDespawnNotified = false;
     private int currentSpawnIndex = 0; // Индекс текущей точки спавна
     private static bool isQuitting = false;
+
 
     void OnApplicationQuit()
     {
@@ -635,24 +642,17 @@ public class ZombieCustomer : MonoBehaviour
                 // Требование: скорость = 1.5 * значение, заданное до начала (берём walkSpeed как базовую)
                 movement.speed = walkSpeed * 1.5f;
 
-                // Держим дистанцию перед игроком: примерно attackRange (чуть меньше, чтобы стабильно входить в радиус удара),
-                // но не слишком маленькую, чтобы не "входить" в игрока.
-                movement.stoppingDistance = Mathf.Clamp(attackRange - 0.2f, 0.8f, 2.5f);
+                // Держим дистанцию перед игроком: примерно attackRange (чуть меньше, чтобы стабильно входить в радиус удара),                // но не слишком маленькую, чтобы не "входить" в игрока.
+                movement.stoppingDistance = Mathf.Max(attackRange - 0.1f, 1.2f);
             }
         }
 
-        // Сразу проигрываем атаку, чтобы визуально не "зависал" в Idle при старте агра
-        PlayAttackAnimation();
 
-        // Запускаем "удары" по кд отдельной корутиной — так урон идёт даже когда оба стоят на месте
-        if (attackCoroutine != null)
-            StopCoroutine(attackCoroutine);
-
-        attackCoroutine = StartCoroutine(AttackLoop());
-    }
+}
 
     void TryAttack(PlayerHealth ph)
     {
+        
         if (ph == null) return;
 
         // Во время атаки всегда разворачиваемся к игроку (по XZ), чтобы удар выглядел правильно
@@ -675,74 +675,89 @@ public class ZombieCustomer : MonoBehaviour
         {
             Vector3 closest = cc.ClosestPoint(transform.position);
             dist = Vector2.Distance(zXZ, new Vector2(closest.x, closest.z));
+
+            // Бьём только в радиусе attackRange (с небольшим допуском на погрешности коллайдеров).
+            if (dist > attackRange + 0.15f) return;
+
+
+
+            if (Time.time - lastAttackTime < attackCooldown) return;
+
+            lastAttackTime = Time.time;
+
+            // Анимация удара
+            PlayAttackAnimation();
+
+            ph.TakeDamage(attackDamage);
         }
 
-        // Допуск, чтобы удар срабатывал стабильно даже когда оба стоят на месте
-        // и когда коллайдеры/выталкивание держат дистанцию чуть больше attackRange.
-        if (dist > attackRange + 0.9f) return;
-
-        if (Time.time - lastAttackTime < attackCooldown) return;
-
-        lastAttackTime = Time.time;
-
-        // Анимация удара
-        PlayAttackAnimation();
-
-        ph.TakeDamage(attackDamage);
-    }
-
-    void PlayAttackAnimation()
-    {
-        if (animator == null) return;
-
-        // Вариант 1: Trigger Attack
-        if (!useIsAttackingBool && !string.IsNullOrEmpty(attackTrigger))
-            animator.SetTrigger(attackTrigger);
-
-        // Вариант 2: bool IsAttacking
-        if (useIsAttackingBool && !string.IsNullOrEmpty(isAttackingBool))
-            animator.SetBool(isAttackingBool, true);
-    }
-
-    void StopAttackAnimationBool()
-    {
-        if (!useIsAttackingBool) return;
-
-        if (animator == null) return;
-
-        if (!string.IsNullOrEmpty(isAttackingBool))
-            animator.SetBool(isAttackingBool, false);
-    }
-
-    // Убрано OnCollisionStay и OnTriggerStay, т.к. теперь урон по dist в TryAttack (из Update/AttackLoop).
-    // Это позволяет наносить урон без Trigger на зомби (чтобы не проходить сквозь), 
-    // но с физическим collider'ом на игроке (для барьера).
-
-    System.Collections.IEnumerator AttackLoop()
-    {
-        while (currentState == ZombieState.Angry)
+        void PlayAttackAnimation()
         {
-            if (cachedPlayerHealth == null)
-                cachedPlayerHealth = playerTarget != null ? playerTarget.GetComponentInParent<PlayerHealth>() : null;
+            if (animator == null) return;
 
-            if (cachedPlayerHealth == null)
-                cachedPlayerHealth = FindObjectOfType<PlayerHealth>();
+            // Вариант 1: Trigger Attack
+            if (!useIsAttackingBool && !string.IsNullOrEmpty(attackTrigger))
+                animator.SetTrigger(attackTrigger);
 
-            // Если по какой-то причине преследование остановилось — обновим цель на игрока
-            if (playerTarget != null)
+            // Вариант 2: bool IsAttacking
+            if (useIsAttackingBool && !string.IsNullOrEmpty(isAttackingBool))
+                animator.SetBool(isAttackingBool, true);
+        }
+
+        void StopAttackAnimationBool()
+        {
+            if (!useIsAttackingBool) return;
+
+            if (animator == null) return;
+
+            if (!string.IsNullOrEmpty(isAttackingBool))
+                animator.SetBool(isAttackingBool, false);
+        }
+
+        // Убрано OnCollisionStay и OnTriggerStay, т.к. теперь урон по dist в TryAttack (из Update/AttackLoop).
+        // Это позволяет наносить урон без Trigger на зомби (чтобы не проходить сквозь), 
+        // но с физическим collider'ом на игроке (для барьера).
+
+        System.Collections.IEnumerator AttackLoop()
+        {
+            while (currentState == ZombieState.Angry)
             {
-                SimpleZombieMovement movement = GetComponent<SimpleZombieMovement>();
-                if (movement != null && movement.target != playerTarget)
-                    movement.SetTarget(playerTarget);
+                if (cachedPlayerHealth == null)
+                    cachedPlayerHealth = playerTarget != null ? playerTarget.GetComponentInParent<PlayerHealth>() : null;
+
+                if (cachedPlayerHealth == null)
+                    cachedPlayerHealth = FindObjectOfType<PlayerHealth>();
+
+                // Если по какой-то причине преследование остановилось — обновим цель на игрока
+                if (playerTarget != null)
+                {
+                    SimpleZombieMovement movement = GetComponent<SimpleZombieMovement>();
+                    if (movement != null && movement.target != playerTarget)
+                        movement.SetTarget(playerTarget);
+                }
+
+                TryAttack(cachedPlayerHealth);
+
+                yield return new WaitForSeconds(attackCooldown);
             }
-
-            TryAttack(cachedPlayerHealth);
-
-            yield return new WaitForSeconds(attackCooldown);
+        }
+        SimpleZombieMovement movement = GetComponent<SimpleZombieMovement>();
+        if (movement != null)
+        {
+            // Если в зоне удара — стопаем движение
+            if (dist <= attackRange)
+            {
+                movement.isMoving = false;
+                movement.UpdateAnimMovement();
+            }
+            else
+            {
+                movement.isMoving = true;
+            }
         }
     }
 
-    public void DeliverItem(GameObject deliveredItem)
+        public void DeliverItem(GameObject deliveredItem)
     {
         // Этот метод теперь вызывается из DeliveryPoint
         // Старая логика удалена
@@ -778,7 +793,7 @@ public class ZombieCustomer : MonoBehaviour
     {
         currentState = ZombieState.Leaving;
 
-        StopAttackAnimationBool();
+
 
         LeaveQueue();
 
@@ -890,4 +905,5 @@ public class ZombieCustomer : MonoBehaviour
             Gizmos.DrawLine(transform.position, spawnPoint.position);
         }
     }
+
 }

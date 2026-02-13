@@ -137,9 +137,10 @@ MonoBehaviour:
   patienceUIPrefab: {fileID: 0}
   useSimpleMovement: 1
   interactionDistance: 1
-  attackDamage: 25
+  attackDamage: 10
   attackCooldown: 1
   attackRange: 7
+  attackStopDistance: 1.4
   testMode: 0
   itemSpawnedSuccessfully: 1
   currentState: 0
@@ -207,10 +208,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   target: {fileID: 0}
   speed: 10
-  stoppingDistance: 0.3
+  stoppingDistance: 50
   rotationSpeed: 5
   animator: {fileID: 0}
   speedParam: Speed
   setIsMovingBool: 0
   isMovingParam: IsMoving
-  penetrationSkin: 0.02
+  penetrationSkin: 10
