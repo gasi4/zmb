@@ -4,6 +4,8 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.InputSystem;
 
+
+
 public class InventoryManager : MonoBehaviour
 {
     public GameObject uiPanel;
@@ -27,6 +29,8 @@ public class InventoryManager : MonoBehaviour
     private int targetSlot = -1;
     private bool isInWashingMachineSelectionMode = false;
     private UIFollowCamera uiFollowCamera;
+
+
 
     void Start()
     {
