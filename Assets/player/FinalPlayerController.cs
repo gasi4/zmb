@@ -65,7 +65,6 @@ public class FinalPlayerController : MonoBehaviour
 
     private bool _vrInventoryWasPressed;
 
-    private bool _vrInventoryWasPressed;
 
 
 
@@ -129,29 +128,7 @@ public class FinalPlayerController : MonoBehaviour
 
     }
 
-    public void SetInputEnabled(bool value)
-    {
-        inputEnabled = value;
-
-        void HandleVRLook()
-        {
-            if (playerCamera == null) return;
-
-            InputAction a = lookAction.action != null ? lookAction.action : rightStick.action;
-            if (a == null) return;
-
-            Vector2 stick = a.ReadValue<Vector2>();
-
-            float dt = Time.deltaTime;
-
-            yaw += stick.x * lookSensitivity * dt;
-            xRotation -= stick.y * lookSensitivity * dt;
-            xRotation = Mathf.Clamp(xRotation, -maxPitch, maxPitch);
-
-            playerCamera.localRotation = Quaternion.Euler(xRotation, yaw, 0f);
-        }
-
-    }
+    
 
     static float NormalizeAngle(float angle)
     {
@@ -165,64 +142,66 @@ public class FinalPlayerController : MonoBehaviour
         if (vrModeActive)
         {
             HandleVRLook();
+            HandleVRInventoryToggle();
         }
+
         // Editor fallback
         if (Input.GetKeyDown(inventoryToggleKey))
             inventoryManager?.ToggleInventory();
-
-        if (!vrModeActive) return;
-
-        HandleVRInventoryToggle();
-        HandleVRLook();
     }
-
     void HandleVRInventoryToggle()
     {
         if (inventoryManager == null) return;
         if (vrInventoryToggleAction.action == null) return;
+
         if (!vrInventoryToggleAction.action.enabled)
-)
         {
             vrInventoryToggleAction.action.Enable();
         }
-        if (Time.time < _nextAllowedVrToggleTime) return
-        // Тогглим по "фронту" нажатия, чтобы не срабатывать от любых performed/трекинга.
+
+        if (Time.time < _nextAllowedVrToggleTime) return;
+
         bool pressedNow = vrInventoryToggleAction.action.ReadValue<float>() > 0.5f;
+
         if (pressedNow && !_vrInventoryWasPressed)
         {
-            {
-                inventoryManager.ToggleInventory();
-                _nextAllowedVrToggleTime = Time.time + vrToggleDebounc        }
-            _vrInventoryWasPressed = pressedNow;
+            inventoryManager.ToggleInventory();
+            _nextAllowedVrToggleTime = Time.time + vrToggleDebounce;
+            _vrInventoryWasPressed = true;
+        }
+        else if (!pressedNow && _vrInventoryWasPressed)
+        {
+            _vrInventoryWasPressed = false;
         }
     }
-}
 
-void HandleVRLook()
-{
-    if (playerCamera == null) return;
+    public void SetInputEnabled(bool value)
+    {
+        inputEnabled = value;
+        // Просто устанавливаем флаг, без вложенных методов
+    }
 
-    InputAction action =
-        lookAction.action != null && lookAction.action.enabled
-            ? lookAction.action
-            : rightStick.action;
+    void HandleVRLook()
+    {
+        if (playerCamera == null) return;
 
-    if (action == null || !action.enabled) return;
+        InputAction action = lookAction.action != null ? lookAction.action : rightStick.action;
+        if (action == null || !action.enabled) return;
 
-    Vector2 stick = action.ReadValue<Vector2>();
-    if (stick.sqrMagnitude < 0.0001f) return;
+        Vector2 stick = action.ReadValue<Vector2>();
+        if (stick.sqrMagnitude < 0.0001f) return;
 
-    float dt = Time.deltaTime;
+        float dt = Time.deltaTime;
 
-    yaw += stick.x * lookSensitivity * dt;
-    xRotation -= stick.y * lookSensitivity * dt;
-    xRotation = Mathf.Clamp(xRotation, -maxPitch, maxPitch);
+        yaw += stick.x * lookSensitivity * dt;
+        xRotation -= stick.y * lookSensitivity * dt;
+        xRotation = Mathf.Clamp(xRotation, -maxPitch, maxPitch);
 
-    playerCamera.localRotation = Quaternion.Euler(xRotation, yaw, 0f);
-}
+        playerCamera.localRotation = Quaternion.Euler(xRotation, yaw, 0f);
+    }
 
-// ДОБАВЛЕНО: Метод для попытки положить вещь на Delivery Point
-void TryPlaceOnDeliveryPoint()
+    // ДОБАВЛЕНО: Метод для попытки положить вещь на Delivery Point
+    void TryPlaceOnDeliveryPoint()
 {
     if (heldObject == null)
     {
@@ -337,7 +316,7 @@ void TryPlaceOnDeliveryPoint()
         Debug.Log("Не удалось положить вещь на Delivery Point!");
     }
 
-    _vrInventoryWasPressed = pressedNow;
+
 }
 
 // Метод для поиска ближайшего зомби, который ждет вещь
