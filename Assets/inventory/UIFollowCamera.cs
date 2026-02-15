@@ -34,6 +34,7 @@ public class UIFollowCamera : MonoBehaviour
 
         // Изначально скрыт
         gameObject.SetActive(false);
+
     }
 
     void LateUpdate()

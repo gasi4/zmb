@@ -97,6 +97,30 @@ public class InventoryManager : MonoBehaviour
                 uiFollowCamera = uiPanel.AddComponent<UIFollowCamera>();
             }
         }
+
+        // ПОЛУЧАЕМ КОМПОНЕНТ СЛЕДОВАНИЯ - ПРИНУДИТЕЛЬНО!
+        if (uiPanel != null)
+        {
+            uiFollowCamera = uiPanel.GetComponent<UIFollowCamera>();
+            if (uiFollowCamera == null)
+            {
+                Debug.LogWarning("UIFollowCamera not found, adding it...");
+                uiFollowCamera = uiPanel.AddComponent<UIFollowCamera>();
+            }
+            else
+            {
+                Debug.Log("UIFollowCamera found successfully!");
+            }
+
+            // Проверяем, что камера настроена
+            if (uiFollowCamera.playerCamera == null)
+            {
+                uiFollowCamera.playerCamera = Camera.main?.transform;
+                Debug.Log($"Camera set to: {uiFollowCamera.playerCamera?.name}");
+            }
+        }
+
+        Debug.Log($"uiFollowCamera after setup: {uiFollowCamera != null}");
     }
 
     void OnEnable()
