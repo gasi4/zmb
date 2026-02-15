@@ -65,6 +65,8 @@ public class FinalPlayerController : MonoBehaviour
 
     private bool _vrInventoryWasPressed;
 
+    private bool _vrInventoryWasPressed;
+
 
 
     [Header("Inventory Sync")]
@@ -176,54 +178,27 @@ public class FinalPlayerController : MonoBehaviour
 
     void HandleVRInventoryToggle()
     {
-        if (inventoryManager == null)
-        {
-            Debug.LogWarning("InventoryManager is null!");
-            return;
-        }
-
-        if (vrInventoryToggleAction.action == null)
-        {
-            Debug.LogWarning("vrInventoryToggleAction.action is null!");
-            return;
-        }
-
-        // Убеждаемся что экшен включен
+        if (inventoryManager == null) return;
+        if (vrInventoryToggleAction.action == null) return;
         if (!vrInventoryToggleAction.action.enabled)
+)
         {
             vrInventoryToggleAction.action.Enable();
         }
-
-        // Проверяем debounce
-        if (Time.time < _nextAllowedVrToggleTime)
-        {
-            Debug.Log($"Debounce: {Time.time} < {_nextAllowedVrToggleTime}");
-            return;
-        }
-
-        // Читаем текущее состояние кнопки
-        float buttonValue = vrInventoryToggleAction.action.ReadValue<float>();
-        bool pressedNow = buttonValue > 0.5f;
-
-        Debug.Log($"Button value: {buttonValue}, pressedNow: {pressedNow}, wasPressed: {_vrInventoryWasPressed}");
-
-        // Реагируем только на нажатие (фронт)
+        if (Time.time < _nextAllowedVrToggleTime) return
+        // Тогглим по "фронту" нажатия, чтобы не срабатывать от любых performed/трекинга.
+        bool pressedNow = vrInventoryToggleAction.action.ReadValue<float>() > 0.5f;
         if (pressedNow && !_vrInventoryWasPressed)
         {
-            Debug.Log(">>> TOGGLING INVENTORY FROM VR <<<");
-            inventoryManager.ToggleInventory();
-            _nextAllowedVrToggleTime = Time.time + vrToggleDebounce;
-            _vrInventoryWasPressed = true;
-        }
-        // Сбрасываем флаг когда кнопка отпущена
-        else if (!pressedNow && _vrInventoryWasPressed)
-        {
-            _vrInventoryWasPressed = false;
-            Debug.Log("Button released");
+            {
+                inventoryManager.ToggleInventory();
+                _nextAllowedVrToggleTime = Time.time + vrToggleDebounc        }
+            _vrInventoryWasPressed = pressedNow;
         }
     }
+}
 
-    void HandleVRLook()
+void HandleVRLook()
 {
     if (playerCamera == null) return;
 
@@ -246,128 +221,127 @@ public class FinalPlayerController : MonoBehaviour
     playerCamera.localRotation = Quaternion.Euler(xRotation, yaw, 0f);
 }
 
-    // ДОБАВЛЕНО: Метод для попытки положить вещь на Delivery Point
-    void TryPlaceOnDeliveryPoint()
+// ДОБАВЛЕНО: Метод для попытки положить вещь на Delivery Point
+void TryPlaceOnDeliveryPoint()
+{
+    if (heldObject == null)
     {
-        if (heldObject == null)
+        Debug.Log("В руке нет вещи для класть на точку!");
+        return;
+    }
+
+    // Ищем подходящий DeliveryPoint: сначала тот, в зоне которого стоит игрок,
+    // иначе — ближайший в радиусе.
+    DeliveryPoint[] points = FindObjectsOfType<DeliveryPoint>();
+    if (points == null || points.Length == 0)
+    {
+        Debug.Log("Не найден Delivery Point на сцене!");
+        return;
+    }
+
+    DeliveryPoint deliveryPoint = null;
+    bool selectedByZone = false;
+
+    // 1) Приоритет: стоим в зоне перед полкой
+    for (int i = 0; i < points.Length; i++)
+    {
+        if (points[i] != null && points[i].IsPlayerInInteractionZone(transform))
         {
-            Debug.Log("В руке нет вещи для класть на точку!");
-            return;
+            deliveryPoint = points[i];
+            selectedByZone = true;
+            break;
         }
+    }
 
-        // Ищем подходящий DeliveryPoint: сначала тот, в зоне которого стоит игрок,
-        // иначе — ближайший в радиусе.
-        DeliveryPoint[] points = FindObjectsOfType<DeliveryPoint>();
-        if (points == null || points.Length == 0)
-        {
-            Debug.Log("Не найден Delivery Point на сцене!");
-            return;
-        }
-
-        DeliveryPoint deliveryPoint = null;
-        bool selectedByZone = false;
-
-        // 1) Приоритет: стоим в зоне перед полкой
+    // 2) Fallback: ближайший по дистанции
+    if (deliveryPoint == null)
+    {
+        float bestDist = float.MaxValue;
         for (int i = 0; i < points.Length; i++)
         {
-            if (points[i] != null && points[i].IsPlayerInInteractionZone(transform))
+            if (points[i] == null) continue;
+            float d = Vector3.Distance(transform.position, points[i].transform.position);
+            if (d < bestDist)
             {
+                bestDist = d;
                 deliveryPoint = points[i];
-                selectedByZone = true;
-                break;
             }
         }
+    }
 
-        // 2) Fallback: ближайший по дистанции
-        if (deliveryPoint == null)
-        {
-            float bestDist = float.MaxValue;
-            for (int i = 0; i < points.Length; i++)
-            {
-                if (points[i] == null) continue;
-                float d = Vector3.Distance(transform.position, points[i].transform.position);
-                if (d < bestDist)
-                {
-                    bestDist = d;
-                    deliveryPoint = points[i];
-                }
-            }
-        }
+    if (deliveryPoint == null)
+    {
+        Debug.Log("Не найден подходящий Delivery Point!");
+        return;
+    }
 
-        if (deliveryPoint == null)
+    // Если мы стоим в зоне перед полкой — расстояние до центра точки не важно.
+    // Иначе (fallback) оставляем проверку по дистанции.
+    if (!selectedByZone)
+    {
+        float distance = Vector3.Distance(transform.position, deliveryPoint.transform.position);
+        if (distance > deliveryInteractionRange)
         {
-            Debug.Log("Не найден подходящий Delivery Point!");
+            Debug.Log($"Слишком далеко от Delivery Point! Дистанция: {distance:F1}, нужно: {deliveryInteractionRange}");
             return;
         }
+    }
 
-        // Если мы стоим в зоне перед полкой — расстояние до центра точки не важно.
-        // Иначе (fallback) оставляем проверку по дистанции.
-        if (!selectedByZone)
+    // Проверяем что это предмет (если в руке визуал из инвентаря — создаём world-версию)
+    Item itemComponent = heldObject.GetComponent<Item>();
+    if (itemComponent == null)
+    {
+        if (heldInventoryItem != null && heldInventoryItem.WorldPrefab != null)
         {
-            float distance = Vector3.Distance(transform.position, deliveryPoint.transform.position);
-            if (distance > deliveryInteractionRange)
-            {
-                Debug.Log($"Слишком далеко от Delivery Point! Дистанция: {distance:F1}, нужно: {deliveryInteractionRange}");
-                return;
-            }
-        }
+            // Меняем "визуал в руке" на реальный объект мира с компонентом Item
+            GameObject worldItem = Instantiate(heldInventoryItem.WorldPrefab);
+            worldItem.transform.position = heldObject.transform.position;
+            worldItem.transform.rotation = heldObject.transform.rotation;
 
-        // Проверяем что это предмет (если в руке визуал из инвентаря — создаём world-версию)
-        Item itemComponent = heldObject.GetComponent<Item>();
-        if (itemComponent == null)
-        {
-            if (heldInventoryItem != null && heldInventoryItem.WorldPrefab != null)
-            {
-                // Меняем "визуал в руке" на реальный объект мира с компонентом Item
-                GameObject worldItem = Instantiate(heldInventoryItem.WorldPrefab);
-                worldItem.transform.position = heldObject.transform.position;
-                worldItem.transform.rotation = heldObject.transform.rotation;
+            itemComponent = worldItem.GetComponent<Item>();
+            if (itemComponent == null) itemComponent = worldItem.AddComponent<Item>();
 
-                itemComponent = worldItem.GetComponent<Item>();
-                if (itemComponent == null) itemComponent = worldItem.AddComponent<Item>();
+            itemComponent.item = heldInventoryItem;
+            itemComponent.amount = 1;
 
-                itemComponent.item = heldInventoryItem;
-                itemComponent.amount = 1;
-
-                // Заменяем heldObject на созданный предмет
-                Destroy(heldObject);
-                heldObject = worldItem;
-            }
-            else
-            {
-                Debug.Log("У объекта нет компонента Item и нет WorldPrefab у предмета из инвентаря!");
-                return;
-            }
-        }
-
-        // ✅ НЕ ИЩЕМ ВЛАДЕЛЬЦА - ВЕЩЬ МОЖЕТ БЫТЬ БЕЗ ВЛАДЕЛЬЦА
-        // Ищем ближайшего зомби, который ждет вещь
-        ZombieCustomer nearestZombie = FindNearestWaitingZombie();
-        if (nearestZombie == null)
-        {
-            Debug.Log("Нет зомби, ожидающих вещь!");
-            return;
-        }
-
-        // Пытаемся положить вещь на точку
-        if (deliveryPoint.PlaceItem(heldObject, nearestZombie))
-        {
-            Debug.Log($"✅ Вещь {heldObject.name} положена на Delivery Point для зомби {nearestZombie.name}");
-
-            // Очищаем руку
-            ClearHeldItem();
+            // Заменяем heldObject на созданный предмет
+            Destroy(heldObject);
+            heldObject = worldItem;
         }
         else
         {
-            Debug.Log("Не удалось положить вещь на Delivery Point!");
+            Debug.Log("У объекта нет компонента Item и нет WorldPrefab у предмета из инвентаря!");
+            return;
         }
-
-        // УДАЛЯЕМ ЭТУ СТРОКУ: _vrInventoryWasPressed = pressedNow;
-        // pressedNow не определена в этом методе!
     }
 
-    // Метод для поиска ближайшего зомби, который ждет вещь
-    ZombieCustomer FindNearestWaitingZombie()
+    // ✅ НЕ ИЩЕМ ВЛАДЕЛЬЦА - ВЕЩЬ МОЖЕТ БЫТЬ БЕЗ ВЛАДЕЛЬЦА
+    // Ищем ближайшего зомби, который ждет вещь
+    ZombieCustomer nearestZombie = FindNearestWaitingZombie();
+    if (nearestZombie == null)
+    {
+        Debug.Log("Нет зомби, ожидающих вещь!");
+        return;
+    }
+
+    // Пытаемся положить вещь на точку
+    if (deliveryPoint.PlaceItem(heldObject, nearestZombie))
+    {
+        Debug.Log($"✅ Вещь {heldObject.name} положена на Delivery Point для зомби {nearestZombie.name}");
+
+        // Очищаем руку
+        ClearHeldItem();
+    }
+    else
+    {
+        Debug.Log("Не удалось положить вещь на Delivery Point!");
+    }
+
+    _vrInventoryWasPressed = pressedNow;
+}
+
+// Метод для поиска ближайшего зомби, который ждет вещь
+ZombieCustomer FindNearestWaitingZombie()
 {
     // 1) Приоритет: зомби на первом месте очереди
     CustomerQueueManager queue = FindObjectOfType<CustomerQueueManager>();
