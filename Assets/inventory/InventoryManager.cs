@@ -123,6 +123,24 @@ public class InventoryManager : MonoBehaviour
         Debug.Log($"uiFollowCamera after setup: {uiFollowCamera != null}");
     }
 
+    // Пытается добавить предмет в первый пустой слот. Возвращает true при успехе.
+    public bool TryAddItemToEmptySlot(ItemScriptableObject item, int amount)
+    {
+        if (item == null) return false;
+
+        foreach (slot slot in slots)
+        {
+            if (slot.isEmpty)
+            {
+                slot.FillSlot(item, amount);
+                Debug.Log($"Предмет {item.ItemName} добавлен в слот {slot.gameObject.name}");
+                return true;
+            }
+        }
+
+        Debug.Log("Нет свободных слотов в инвентаре");
+        return false;
+    }
     void OnEnable()
     {
         if (vrInventoryToggleAction != null && vrInventoryToggleAction.action != null)

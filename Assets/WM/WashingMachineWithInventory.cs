@@ -50,11 +50,9 @@ public class WashingMachineWithInventory : WashingMachine
     private slot currentTargetSlot;
     private Coroutine washingCoroutine;
 
-    // Таймер стирки (локальный — чтобы не зависеть от WashingMachine.Update(), который здесь перекрыт)
     private float washingTimer = 0f;
     private float washingDuration = 0f;
 
-    // Сохраняем, что именно стираем, чтобы после окончания выдать "чистые" предметы
     private readonly List<(ItemScriptableObject item, int amount)> washedItems = new List<(ItemScriptableObject item, int amount)>();
 
     void Start()
@@ -113,13 +111,14 @@ public class WashingMachineWithInventory : WashingMachine
             clearMachineButton.onClick.AddListener(ClearAllSlots);
 
         if (closeButton != null)
-            closeButton.onClick.AddListener(CloseUI);
+            closeButton.onClick.AddListener(CloseUI); // можно оставить, но теперь CloseUI пустой
 
         SetupWashModeToggles();
         SetMode(WashMode.Colored);
 
+        // ========== ИЗМЕНЕНИЕ: канвас всегда включён ==========
         if (machineCanvas != null)
-            machineCanvas.gameObject.SetActive(false);
+            machineCanvas.gameObject.SetActive(true);
 
         if (capacitySlider != null)
         {
@@ -176,7 +175,8 @@ public class WashingMachineWithInventory : WashingMachine
             return;
         }
 
-        CloseUI();
+        // ========== ИЗМЕНЕНИЕ: убрали CloseUI() ==========
+        // CloseUI();   // <-- удалено
 
         if (!playerInventory.isOpened)
             playerInventory.ToggleInventory();
@@ -190,63 +190,9 @@ public class WashingMachineWithInventory : WashingMachine
         Cursor.visible = true;
     }
 
-    public void OpenMachineUI()
-    {
-        if (machineCanvas == null)
-        {
-            Debug.LogError("❌ machineCanvas не назначен!");
-            return;
-        }
-
-        EnsureEventSystemExists();
-
-        machineCanvas.gameObject.SetActive(true);
-        Canvas canvas = machineCanvas.GetComponent<Canvas>();
-        if (canvas != null)
-        {
-            canvas.overrideSorting = true;
-            canvas.sortingOrder = 100;
-        }
-
-        GraphicRaycaster raycaster = machineCanvas.GetComponent<GraphicRaycaster>();
-        if (raycaster != null) raycaster.enabled = true;
-
-        UpdateUI();
-
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
-
-        if (player != null)
-        {
-            player.SetInputEnabled(false);
-            if (player.unifiedRay != null)
-                player.unifiedRay.enabled = false;
-        }
-    }
-
-    void EnsureEventSystemExists()
-    {
-        EventSystem eventSystem = FindObjectOfType<EventSystem>();
-        if (eventSystem == null)
-        {
-            GameObject es = new GameObject("EventSystem");
-            es.AddComponent<EventSystem>();
-            es.AddComponent<StandaloneInputModule>();
-        }
-    }
-
-    public void CloseUI()
-    {
-        if (machineCanvas != null)
-            machineCanvas.gameObject.SetActive(false);
-
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
-
-        if (player != null) player.SetInputEnabled(true);
-        if (player != null && player.unifiedRay != null)
-            player.unifiedRay.enabled = true;
-    }
+    // ========== ИЗМЕНЕНИЕ: методы OpenMachineUI и CloseUI теперь пустые (или их можно удалить) ==========
+    public void OpenMachineUI() { }   // больше ничего не делает
+    public void CloseUI() { }         // больше ничего не делает
 
     public bool IsUIOpen() => machineCanvas != null && machineCanvas.gameObject.activeSelf;
 
@@ -319,8 +265,9 @@ public class WashingMachineWithInventory : WashingMachine
 
     void Update()
     {
-        if (IsUIOpen() && Input.GetKeyDown(KeyCode.Escape))
-            CloseUI();
+        // ========== ИЗМЕНЕНИЕ: убрали закрытие по Escape ==========
+        // if (IsUIOpen() && Input.GetKeyDown(KeyCode.Escape))
+        //     CloseUI();
 
         if (isWashing)
             UpdateUI();
@@ -399,7 +346,6 @@ public class WashingMachineWithInventory : WashingMachine
 
     System.Collections.IEnumerator WashingProgress()
     {
-        // Используем локальные washingTimer/washingDuration, чтобы таймер точно работал
         while (washingTimer < washingDuration)
         {
             washingTimer += Time.deltaTime;
@@ -407,7 +353,6 @@ public class WashingMachineWithInventory : WashingMachine
             if (progressSlider != null && washingDuration > 0f)
                 progressSlider.value = Mathf.Clamp01(washingTimer / washingDuration);
 
-            // Обновляем текст таймера сразу во время стирки
             if (timerText != null)
             {
                 float remaining = Mathf.Max(0f, washingDuration - washingTimer);
@@ -423,10 +368,8 @@ public class WashingMachineWithInventory : WashingMachine
 
     void FinishWashingProcess()
     {
-        // ВАЖНО: останавливаем стирку, иначе UI/таймер будут думать, что всё ещё стираем
         isWashing = false;
 
-        // Создаем "чистые" вещи на выходе из машинки, чтобы их можно было взять в руку и отнести в DeliveryPoint
         if (cleanItemsSpawnPoint != null && washedItems.Count > 0)
         {
             float offsetStep = 0.25f;
@@ -446,7 +389,7 @@ public class WashingMachineWithInventory : WashingMachine
 
                     itemComp.item = entry.item;
                     itemComp.amount = 1;
-                    itemComp.MakeClean(); // внутри выставится тег CleanThing (если он создан)
+                    itemComp.MakeClean();
 
                     spawned++;
                 }
@@ -461,7 +404,6 @@ public class WashingMachineWithInventory : WashingMachine
 
         washedItems.Clear();
 
-        // Очищаем слоты (не вызываем ClearAllSlots/RemoveFromMachine, чтобы не спавнить предметы второй раз)
         for (int i = 0; i < machineSlots.Count; i++)
         {
             if (machineSlots[i] != null)

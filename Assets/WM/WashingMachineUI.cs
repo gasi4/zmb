@@ -1,7 +1,7 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
 using System.Collections.Generic;
-using TMPro; // Добавляем using для TMPro
+using TMPro;
 
 public class WashingMachineUI : MonoBehaviour
 {
@@ -10,9 +10,9 @@ public class WashingMachineUI : MonoBehaviour
     public Button closeButton;
 
     [Header("Режимы стирки - ТЕПЕРЬ ТОЛЬКО 3")]
-    public Toggle coloredToggle;      // Цветное белье
-    public Toggle delicateToggle;     // Деликатное
-    public Toggle quickToggle;        // Быстрая стирка
+    public Toggle coloredToggle;
+    public Toggle delicateToggle;
+    public Toggle quickToggle;
 
     [Header("Информация о режиме")]
     public Text modeNameText;
@@ -42,18 +42,19 @@ public class WashingMachineUI : MonoBehaviour
     public Text loadedCountText;
 
     [Header("Таймер - ТОЛЬКО СЕКУНДЫ")]
-    public TextMeshProUGUI timerText; // Для отображения "Осталось: X.X сек"
-    public TextMeshProUGUI simpleTimerText; // Альтернативный вариант: просто "X.X"
+    public TextMeshProUGUI timerText;
+    public TextMeshProUGUI simpleTimerText;
 
     private bool isWashing = false;
 
     void Start()
     {
+        // ========== ИЗМЕНЕНИЕ: панель всегда включена ==========
         if (panel != null)
-            panel.SetActive(false);
+            panel.SetActive(true);
 
         if (closeButton != null)
-            closeButton.onClick.AddListener(CloseUI);
+            closeButton.onClick.AddListener(CloseUI); // можно оставить, но CloseUI пустой
 
         startWashButton?.onClick.AddListener(StartWashing);
 
@@ -73,7 +74,6 @@ public class WashingMachineUI : MonoBehaviour
         }
     }
 
-    // ДОБАВЬ ЭТОТ МЕТОД - он отсутствовал
     void UpdateModeInfo()
     {
         if (washingMachine == null) return;
@@ -92,7 +92,6 @@ public class WashingMachineUI : MonoBehaviour
 
     public void UpdateTimerDisplay(float remainingTime)
     {
-        // Вариант 1: С текстовым описанием
         if (timerText != null)
         {
             if (remainingTime > 0)
@@ -107,15 +106,12 @@ public class WashingMachineUI : MonoBehaviour
             }
         }
 
-        // Вариант 2: Только число
         if (simpleTimerText != null)
         {
             if (remainingTime > 0)
             {
                 simpleTimerText.text = $"{remainingTime:F1}";
                 simpleTimerText.color = Color.yellow;
-
-                // Можно добавить визуальную обратную связь при малом времени
                 if (remainingTime < 3f)
                 {
                     simpleTimerText.color = Color.red;
@@ -135,68 +131,11 @@ public class WashingMachineUI : MonoBehaviour
         if (inventoryManager == null) inventoryManager = FindObjectOfType<InventoryManager>();
     }
 
-    public void ToggleMenu()
-    {
-        if (panel == null) { Debug.LogError("❌ PANEL NULL"); return; }
+    // ========== ИЗМЕНЕНИЕ: методы управления видимостью теперь пустые ==========
+    public void ToggleMenu() { }
+    public void OpenUI() { }
+    public void CloseUI() { }
 
-        bool state = !panel.activeSelf;
-        panel.SetActive(state);
-
-        if (state)
-        {
-            UpdateUI();
-            UpdateModeInfo(); // Теперь этот метод существует
-        }
-
-        Debug.Log("🖼 PANEL ACTIVE = " + panel.activeSelf);
-    }
-
-    public void OpenUI()
-    {
-        if (panel == null) return;
-
-        panel.SetActive(true);
-        UpdateUI();
-        UpdateModeInfo(); // Теперь этот метод существует
-
-        // Включаем курсор для клика
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
-
-        // Блокируем движение игрока
-        var player = FindObjectOfType<FinalPlayerController>();
-        if (player != null)
-        {
-            player.SetInputEnabled(false);
-            if (player.unifiedRay != null)
-                player.unifiedRay.enabled = false;
-        }
-
-        Debug.Log("🧺 UI открыт");
-    }
-
-    public void CloseUI()
-    {
-        if (panel == null) return;
-
-        panel.SetActive(false);
-
-        // Включаем курсор обратно
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
-
-        var player = FindObjectOfType<FinalPlayerController>();
-        if (player != null)
-        {
-            player.SetInputEnabled(true);
-            if (player.unifiedRay != null)
-                player.unifiedRay.enabled = true;
-        }
-
-        Debug.Log("❌ UI закрыт");
-    }
-
-    // ДОБАВЬ ЭТОТ МЕТОД для установки прогресса
     public void SetProgress(float value)
     {
         if (progressSlider != null)
@@ -226,7 +165,6 @@ public class WashingMachineUI : MonoBehaviour
             statusText.color = color;
         }
 
-        // Также обновляем таймер в зависимости от статуса
         if (status == "Стирка..." && timerText != null)
         {
             timerText.color = Color.yellow;
@@ -247,29 +185,24 @@ public class WashingMachineUI : MonoBehaviour
     {
         if (washingMachine == null) return;
 
-        // Обновляем прогресс
         if (progressSlider != null)
             progressSlider.value = washingMachine.GetProgressPercentage() / 100f;
 
-        // Обновляем таймер
         if (washingMachine.isWashing)
         {
             float remaining = washingMachine.GetRemainingTime();
             UpdateTimerDisplay(remaining);
         }
 
-        // Количество загруженных вещей
         if (loadedCountText != null)
         {
             loadedCountText.text = $"Загружено: {washingMachine.GetLoadedCount()}/{washingMachine.maxCapacity}";
         }
 
-        // Кнопка старта
         startWashButton.interactable =
             !washingMachine.isWashing &&
             HasClothesInSlots();
 
-        // Обновляем статус
         if (statusText != null)
         {
             if (washingMachine.isWashing)
@@ -289,7 +222,6 @@ public class WashingMachineUI : MonoBehaviour
             }
         }
 
-        // Обновляем состояние тогглов
         UpdateTogglesState();
     }
 
@@ -307,7 +239,6 @@ public class WashingMachineUI : MonoBehaviour
     {
         bool isWashingActive = washingMachine != null && washingMachine.isWashing;
 
-        // Делаем тогглы неактивными во время стирки
         if (coloredToggle != null)
             coloredToggle.interactable = !isWashingActive;
 
@@ -328,21 +259,21 @@ public class WashingMachineUI : MonoBehaviour
 
     void Update()
     {
-        // Обновляем UI, если панель открыта
+        // ========== ИЗМЕНЕНИЕ: убрали проверку Escape ==========
+        // if (panel != null && panel.activeSelf && Input.GetKeyDown(KeyCode.Escape))
+        //     CloseUI();
+
         if (panel != null && panel.activeSelf && washingMachine != null)
         {
             if (washingMachine.isWashing)
             {
                 float remainingTime = washingMachine.GetRemainingTime();
                 UpdateTimerDisplay(remainingTime);
-
-                // Обновляем прогресс бар
                 float progress = washingMachine.GetProgressPercentage() / 100f;
                 SetProgress(progress);
             }
             else
             {
-                // Если стирка не идет, показываем готовность
                 if (timerText != null)
                 {
                     timerText.text = "Готово к стирке";
@@ -356,12 +287,10 @@ public class WashingMachineUI : MonoBehaviour
                 }
             }
 
-            // Обновляем остальной UI
             UpdateUIPublic();
         }
     }
 
-    // Метод для обновления отображения режима (вызывается из WashingMachine)
     public void UpdateModeDisplay(WashingMachine.WashModeSettings settings)
     {
         UpdateModeInfo();
@@ -388,7 +317,6 @@ public class WashingMachineUI : MonoBehaviour
 
     void SetupModeToggles()
     {
-        // Убедиться, что все тогглы выключены сначала
         if (coloredToggle != null)
         {
             coloredToggle.isOn = false;
@@ -428,7 +356,6 @@ public class WashingMachineUI : MonoBehaviour
             });
         }
 
-        // Устанавливаем режим по умолчанию
         if (coloredToggle != null)
         {
             coloredToggle.isOn = true;
