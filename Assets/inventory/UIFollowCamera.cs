@@ -1,30 +1,30 @@
-using UnityEngine;
+п»їusing UnityEngine;
 
 public class UIFollowCamera : MonoBehaviour
 {
     [Header("Camera Reference")]
-    public Transform playerCamera; // Камера игрока
+    public Transform playerCamera; // РљР°РјРµСЂР° РёРіСЂРѕРєР°
 
     [Header("Position Settings")]
-    public float distance = 2.0f; // Расстояние от камеры
-    public float height = 1.0f; // Высота относительно камеры
-    public float horizontalOffset = 0f; // Смещение влево/вправо (0 = по центру)
+    public float distance = 2.0f; // Р Р°СЃСЃС‚РѕСЏРЅРёРµ РѕС‚ РєР°РјРµСЂС‹
+    public float height = 1.0f; // Р’С‹СЃРѕС‚Р° РѕС‚РЅРѕСЃРёС‚РµР»СЊРЅРѕ РєР°РјРµСЂС‹
+    public float horizontalOffset = 0f; // РЎРјРµС‰РµРЅРёРµ РІР»РµРІРѕ/РІРїСЂР°РІРѕ (0 = РїРѕ С†РµРЅС‚СЂСѓ)
 
     [Header("Smooth Movement")]
     public bool smoothMovement = true;
     public float smoothSpeed = 10f;
 
     [Header("Rotation")]
-    public bool alwaysFaceCamera = true; // Всегда повернут лицом к камере
+    public bool alwaysFaceCamera = true; // Р’СЃРµРіРґР° РїРѕРІРµСЂРЅСѓС‚ Р»РёС†РѕРј Рє РєР°РјРµСЂРµ
 
     private bool isVisible = false;
 
     void Start()
     {
-        // Если камера не назначена, пробуем найти
+        // Р•СЃР»Рё РєР°РјРµСЂР° РЅРµ РЅР°Р·РЅР°С‡РµРЅР°, РїСЂРѕР±СѓРµРј РЅР°Р№С‚Рё
         if (playerCamera == null)
         {
-            // Ищем основную камеру
+            // РС‰РµРј РѕСЃРЅРѕРІРЅСѓСЋ РєР°РјРµСЂСѓ
             Camera cam = Camera.main;
             if (cam != null)
                 playerCamera = cam.transform;
@@ -32,7 +32,7 @@ public class UIFollowCamera : MonoBehaviour
                 Debug.LogError("UIFollowCamera: Player Camera not assigned and Camera.main not found!");
         }
 
-        // Изначально скрыт
+        // РР·РЅР°С‡Р°Р»СЊРЅРѕ СЃРєСЂС‹С‚
         gameObject.SetActive(false);
     }
 
@@ -40,7 +40,7 @@ public class UIFollowCamera : MonoBehaviour
     {
         if (!isVisible || playerCamera == null) return;
 
-        // Вычисляем целевую позицию перед камерой
+        // Р’С‹С‡РёСЃР»СЏРµРј С†РµР»РµРІСѓСЋ РїРѕР·РёС†РёСЋ РїРµСЂРµРґ РєР°РјРµСЂРѕР№
         Vector3 targetPosition = playerCamera.position +
                                 playerCamera.forward * distance +
                                 playerCamera.up * height +
@@ -48,34 +48,43 @@ public class UIFollowCamera : MonoBehaviour
 
         if (smoothMovement)
         {
-            // Плавное движение
+            // РџР»Р°РІРЅРѕРµ РґРІРёР¶РµРЅРёРµ
             transform.position = Vector3.Lerp(transform.position, targetPosition, smoothSpeed * Time.deltaTime);
         }
         else
         {
-            // Мгновенное перемещение
+            // РњРіРЅРѕРІРµРЅРЅРѕРµ РїРµСЂРµРјРµС‰РµРЅРёРµ
             transform.position = targetPosition;
         }
 
         if (alwaysFaceCamera)
         {
-            // Поворачиваем UI лицом к камере
+            // РџРѕРІРѕСЂР°С‡РёРІР°РµРј UI Р»РёС†РѕРј Рє РєР°РјРµСЂРµ
             transform.LookAt(playerCamera);
-            // Корректируем поворот (так как UI должен смотреть на камеру, но не быть перевернутым)
+            // РљРѕСЂСЂРµРєС‚РёСЂСѓРµРј РїРѕРІРѕСЂРѕС‚ (С‚Р°Рє РєР°Рє UI РґРѕР»Р¶РµРЅ СЃРјРѕС‚СЂРµС‚СЊ РЅР° РєР°РјРµСЂСѓ, РЅРѕ РЅРµ Р±С‹С‚СЊ РїРµСЂРµРІРµСЂРЅСѓС‚С‹Рј)
             transform.Rotate(0, 180, 0);
         }
     }
 
     public void Show()
     {
-        Debug.Log($"=== UIFollowCamera.Show() ===");
-        Debug.Log($"Camera exists: {playerCamera != null}");
-        Debug.Log($"Distance: {distance}, Height: {height}");
+        Debug.Log("в…в…в…в…в… UIFollowCamera.Show() STARTED в…в…в…в…в…");
+        Debug.Log($"isVisible before: {isVisible}");
+        Debug.Log($"gameObject.activeSelf before: {gameObject.activeSelf}");
+        Debug.Log($"playerCamera null? {playerCamera == null}");
+
+        if (playerCamera != null)
+        {
+            Debug.Log($"Camera name: {playerCamera.name}");
+            Debug.Log($"Camera position: {playerCamera.position}");
+            Debug.Log($"Camera forward: {playerCamera.forward}");
+        }
 
         isVisible = true;
         gameObject.SetActive(true);
 
-        Debug.Log($"GameObject active: {gameObject.activeSelf}");
+        Debug.Log($"gameObject.activeSelf after: {gameObject.activeSelf}");
+        Debug.Log($"transform.position before move: {transform.position}");
 
         if (playerCamera != null)
         {
@@ -85,22 +94,30 @@ public class UIFollowCamera : MonoBehaviour
                            playerCamera.right * horizontalOffset;
 
             transform.position = newPos;
-            Debug.Log($"UI positioned at: {newPos}");
-            Debug.Log($"Camera position: {playerCamera.position}");
+            Debug.Log($"transform.position after move: {transform.position}");
+            Debug.Log($"Distance from camera: {Vector3.Distance(transform.position, playerCamera.position)}");
 
             if (alwaysFaceCamera)
             {
                 transform.LookAt(playerCamera);
                 transform.Rotate(0, 180, 0);
-                Debug.Log($"UI rotation set to: {transform.rotation.eulerAngles}");
+                Debug.Log($"transform.rotation: {transform.rotation.eulerAngles}");
             }
+
+            // Р’РР—РЈРђР›Р¬РќР«Р™ РњРђР РљР•Р  - РїРѕСЃС‚Р°РІРёС‚СЊ РєСѓР± РЅР° РјРµСЃС‚Рµ UI
+            GameObject marker = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            marker.transform.position = transform.position;
+            marker.transform.localScale = Vector3.one * 0.2f;
+            marker.name = "UI_POSITION_MARKER";
+            Destroy(marker, 3f); // РСЃС‡РµР·РЅРµС‚ С‡РµСЂРµР· 3 СЃРµРєСѓРЅРґС‹
         }
         else
         {
-            Debug.LogError("UIFollowCamera: playerCamera is null!");
+            Debug.LogError("в…в…в…в…в… playerCamera is NULL! в…в…в…в…в…");
         }
 
-        Debug.Log($"=== UIFollowCamera.Show() finished ===\n");
+        Debug.Log($"isVisible after: {isVisible}");
+        Debug.Log("в…в…в…в…в… UIFollowCamera.Show() FINISHED в…в…в…в…в…\n");
     }
 
     public void Hide()
