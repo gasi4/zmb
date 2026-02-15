@@ -68,6 +68,21 @@ public class UIFollowCamera : MonoBehaviour
 
     public void Show()
     {
+        // ПРИНУДИТЕЛЬНАЯ НАСТРОЙКА CANVAS
+        Canvas canvas = GetComponent<Canvas>();
+        if (canvas != null)
+        {
+            canvas.renderMode = RenderMode.WorldSpace;
+            canvas.worldCamera = playerCamera.GetComponent<Camera>();
+            canvas.planeDistance = 1;
+            canvas.sortingOrder = 100; // Высокий приоритет
+            Debug.Log($"Canvas configured: mode={canvas.renderMode}, camera={canvas.worldCamera?.name}");
+        }
+        else
+        {
+            Debug.LogError("No Canvas component found!");
+            return;
+        }
         Debug.Log("★★★★★ UIFollowCamera.Show() STARTED ★★★★★");
         Debug.Log($"isVisible before: {isVisible}");
         Debug.Log($"gameObject.activeSelf before: {gameObject.activeSelf}");
@@ -118,6 +133,8 @@ public class UIFollowCamera : MonoBehaviour
 
         Debug.Log($"isVisible after: {isVisible}");
         Debug.Log("★★★★★ UIFollowCamera.Show() FINISHED ★★★★★\n");
+
+
     }
 
     public void Hide()
