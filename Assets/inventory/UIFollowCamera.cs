@@ -68,22 +68,32 @@ public class UIFollowCamera : MonoBehaviour
 
     public void Show()
     {
+        Debug.Log($"UIFollowCamera.Show() called. Camera exists: {playerCamera != null}");
+
         isVisible = true;
         gameObject.SetActive(true);
 
-        // Мгновенно перемещаем в правильную позицию при появлении
         if (playerCamera != null)
         {
-            transform.position = playerCamera.position +
-                               playerCamera.forward * distance +
-                               playerCamera.up * height +
-                               playerCamera.right * horizontalOffset;
+            Vector3 newPos = playerCamera.position +
+                           playerCamera.forward * distance +
+                           playerCamera.up * height +
+                           playerCamera.right * horizontalOffset;
+
+            transform.position = newPos;
+            Debug.Log($"UI positioned at: {newPos}");
 
             if (alwaysFaceCamera)
             {
                 transform.LookAt(playerCamera);
                 transform.Rotate(0, 180, 0);
             }
+
+            Debug.Log($"UI active: {gameObject.activeSelf}, position: {transform.position}");
+        }
+        else
+        {
+            Debug.LogError("UIFollowCamera: playerCamera is null in Show()!");
         }
     }
 

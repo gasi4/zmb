@@ -163,48 +163,52 @@ public class InventoryManager : MonoBehaviour
     // Переключение инвентаря
     public void ToggleInventory()
     {
-        //isOpened = !isOpened;
-        //uiPanel.SetActive(isOpened);
-
-        //if (isOpened)
-        //{
-        //    Cursor.lockState = CursorLockMode.None;
-        //    Cursor.visible = true;
-        //    playerController?.SetInputEnabled(false);
-        //}
-        //else
-        //{
-        //    Cursor.lockState = CursorLockMode.Locked;
-        //    Cursor.visible = false;
-        //    playerController?.SetInputEnabled(true);
-        //}
-
-        //Debug.Log($"Инвентарь {(isOpened ? "открыт" : "закрыт")}");
-        //isOpened = !isOpened;
+        isOpened = !isOpened; // <- ЭТО САМОЕ ВАЖНОЕ! Переключаем состояние
 
         if (isOpened)
         {
-            // Используем метод Show для плавного появления
+            // Открываем инвентарь
             if (uiFollowCamera != null)
+            {
                 uiFollowCamera.Show();
+                Debug.Log($"Show called on UIFollowCamera. Camera: {uiFollowCamera.playerCamera?.name}");
+            }
             else
+            {
                 uiPanel.SetActive(true);
+            }
 
+            // Блокируем управление игроком
+            if (playerController != null)
+            {
+                playerController.SetInputEnabled(false);
+            }
+
+            // Для отладки на компьютере
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
-            playerController?.SetInputEnabled(false);
         }
         else
         {
-            // Используем метод Hide
+            // Закрываем инвентарь
             if (uiFollowCamera != null)
+            {
                 uiFollowCamera.Hide();
+            }
             else
+            {
                 uiPanel.SetActive(false);
+            }
 
+            // Возвращаем управление игроку
+            if (playerController != null)
+            {
+                playerController.SetInputEnabled(true);
+            }
+
+            // Для отладки на компьютере
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
-            playerController?.SetInputEnabled(true);
         }
 
         Debug.Log($"Инвентарь {(isOpened ? "открыт" : "закрыт")}");

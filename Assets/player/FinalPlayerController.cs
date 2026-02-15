@@ -176,8 +176,17 @@ public class FinalPlayerController : MonoBehaviour
 
     void HandleVRInventoryToggle()
     {
-        if (inventoryManager == null) return;
-        if (vrInventoryToggleAction.action == null) return;
+        if (inventoryManager == null)
+        {
+            Debug.LogWarning("InventoryManager is null!");
+            return;
+        }
+
+        if (vrInventoryToggleAction.action == null)
+        {
+            Debug.LogWarning("vrInventoryToggleAction.action is null!");
+            return;
+        }
 
         // Убеждаемся что экшен включен
         if (!vrInventoryToggleAction.action.enabled)
@@ -186,22 +195,31 @@ public class FinalPlayerController : MonoBehaviour
         }
 
         // Проверяем debounce
-        if (Time.time < _nextAllowedVrToggleTime) return;
+        if (Time.time < _nextAllowedVrToggleTime)
+        {
+            Debug.Log($"Debounce: {Time.time} < {_nextAllowedVrToggleTime}");
+            return;
+        }
 
         // Читаем текущее состояние кнопки
-        bool pressedNow = vrInventoryToggleAction.action.ReadValue<float>() > 0.5f;
+        float buttonValue = vrInventoryToggleAction.action.ReadValue<float>();
+        bool pressedNow = buttonValue > 0.5f;
 
-        // Реагируем только на нажатие (фронт), а не удержание
+        Debug.Log($"Button value: {buttonValue}, pressedNow: {pressedNow}, wasPressed: {_vrInventoryWasPressed}");
+
+        // Реагируем только на нажатие (фронт)
         if (pressedNow && !_vrInventoryWasPressed)
         {
+            Debug.Log(">>> TOGGLING INVENTORY FROM VR <<<");
             inventoryManager.ToggleInventory();
-            _nextAllowedVrToggleTime = Time.time + vrToggleDebounce; // Устанавливаем задержку
-            _vrInventoryWasPressed = true; // Запоминаем что кнопка нажата
+            _nextAllowedVrToggleTime = Time.time + vrToggleDebounce;
+            _vrInventoryWasPressed = true;
         }
         // Сбрасываем флаг когда кнопка отпущена
         else if (!pressedNow && _vrInventoryWasPressed)
         {
             _vrInventoryWasPressed = false;
+            Debug.Log("Button released");
         }
     }
 

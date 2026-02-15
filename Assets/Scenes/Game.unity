@@ -4324,7 +4324,7 @@ MonoBehaviour:
   playerController: {fileID: 67886950}
   vrInventoryToggleAction: {fileID: 1266853753007822313, guid: c348712bda248c246b8c49b3db54643f, type: 3}
   vrToggleDebounce: 0.25
-  inventoryPanel: {fileID: 2055990822}
+  inventoryPanel: {fileID: 1160859045}
   slots: []
   isOpened: 0
   items: []
