@@ -163,24 +163,39 @@ public class InventoryManager : MonoBehaviour
     // Переключение инвентаря
     public void ToggleInventory()
     {
-        isOpened = !isOpened; // <- ЭТО САМОЕ ВАЖНОЕ! Переключаем состояние
+        Debug.Log($"=== ToggleInventory CALLED ===");
+        Debug.Log($"Before toggle - isOpened: {isOpened}");
+        Debug.Log($"uiFollowCamera exists: {uiFollowCamera != null}");
+        Debug.Log($"uiPanel exists: {uiPanel != null}");
+        Debug.Log($"uiPanel active self: {(uiPanel != null ? uiPanel.activeSelf.ToString() : "null")}");
+
+        if (uiFollowCamera != null)
+        {
+            Debug.Log($"uiFollowCamera.playerCamera: {uiFollowCamera.playerCamera?.name}");
+        }
+
+        isOpened = !isOpened; // ЭТО САМОЕ ВАЖНОЕ!
+        Debug.Log($"After toggle - isOpened: {isOpened}");
 
         if (isOpened)
         {
-            // Открываем инвентарь
+            Debug.Log(">>> OPENING INVENTORY <<<");
+
             if (uiFollowCamera != null)
             {
+                Debug.Log("Calling uiFollowCamera.Show()");
                 uiFollowCamera.Show();
-                Debug.Log($"Show called on UIFollowCamera. Camera: {uiFollowCamera.playerCamera?.name}");
             }
             else
             {
+                Debug.Log("Calling uiPanel.SetActive(true)");
                 uiPanel.SetActive(true);
             }
 
             // Блокируем управление игроком
             if (playerController != null)
             {
+                Debug.Log("Disabling player input");
                 playerController.SetInputEnabled(false);
             }
 
@@ -190,19 +205,23 @@ public class InventoryManager : MonoBehaviour
         }
         else
         {
-            // Закрываем инвентарь
+            Debug.Log(">>> CLOSING INVENTORY <<<");
+
             if (uiFollowCamera != null)
             {
+                Debug.Log("Calling uiFollowCamera.Hide()");
                 uiFollowCamera.Hide();
             }
             else
             {
+                Debug.Log("Calling uiPanel.SetActive(false)");
                 uiPanel.SetActive(false);
             }
 
             // Возвращаем управление игроку
             if (playerController != null)
             {
+                Debug.Log("Enabling player input");
                 playerController.SetInputEnabled(true);
             }
 
@@ -211,7 +230,7 @@ public class InventoryManager : MonoBehaviour
             Cursor.visible = false;
         }
 
-        Debug.Log($"Инвентарь {(isOpened ? "открыт" : "закрыт")}");
+        Debug.Log($"=== ToggleInventory FINISHED, isOpened now: {isOpened} ===\n");
     }
 
     public void OpenForWashingMachineSelection(WashingMachineWithInventory machine, int slotIndex)
