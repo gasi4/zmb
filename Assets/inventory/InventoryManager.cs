@@ -4,8 +4,6 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.InputSystem;
 
-
-
 public class InventoryManager : MonoBehaviour
 {
     public GameObject uiPanel;
@@ -30,17 +28,19 @@ public class InventoryManager : MonoBehaviour
     private bool isInWashingMachineSelectionMode = false;
     private UIFollowCamera uiFollowCamera;
 
-
-
     void Start()
     {
         Debug.Log("InventoryManager Start вызван");
 
-        // Закрываем при старте
+        // Инвентарь должен быть всегда включен при старте
         if (uiPanel != null)
         {
-            uiPanel.SetActive(false);
-            isOpened = false;
+            if (uiFollowCamera != null)
+                uiFollowCamera.Show();
+            else
+                uiPanel.SetActive(true);
+
+            isOpened = true;
         }
 
         // Находим все слоты
@@ -119,8 +119,15 @@ public class InventoryManager : MonoBehaviour
                 Debug.Log($"Camera set to: {uiFollowCamera.playerCamera?.name}");
             }
         }
-
         Debug.Log($"uiFollowCamera after setup: {uiFollowCamera != null}");
+
+        // На всякий случай принудительно показываем UI после инициализации UIFollowCamera
+        if (uiPanel != null)
+        {
+            if (uiFollowCamera != null) uiFollowCamera.Show();
+            else uiPanel.SetActive(true);
+            isOpened = true;
+        }
     }
 
     // Пытается добавить предмет в первый пустой слот. Возвращает true при успехе.
@@ -141,6 +148,7 @@ public class InventoryManager : MonoBehaviour
         Debug.Log("Нет свободных слотов в инвентаре");
         return false;
     }
+
     void OnEnable()
     {
         if (vrInventoryToggleAction != null && vrInventoryToggleAction.action != null)
@@ -566,8 +574,15 @@ public class InventoryManager : MonoBehaviour
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
     }
+    public void SetHeldItemWithVisual(ItemScriptableObject item, int amount)
+{
+    heldItem = item;
+    heldItemAmount = amount;
+    if (playerController != null)
+        playerController.GrabItemFromInventory(item, amount);
+}
 
-    // Синхронизировать предмет в рукем
+    // Синхронизировать предмет в руке
     public void SyncHeldItem(ItemScriptableObject item, int amount)
     {
         heldItem = item;

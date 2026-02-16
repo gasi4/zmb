@@ -18,25 +18,18 @@ public class slot : MonoBehaviour, IPointerClickHandler
 
     void Awake()
     {
-        // Находим компоненты
-        if (transform.childCount > 0)
-        {
+        // Ищем иконку по имени "Icon" или первый дочерний
+        iconGameObject = transform.Find("Icon")?.gameObject;
+        if (iconGameObject == null && transform.childCount > 0)
             iconGameObject = transform.GetChild(0).gameObject;
-        }
 
-        if (transform.childCount > 1)
-        {
-            itemAmountText = transform.GetChild(1).GetComponent<TMP_Text>();
-        }
+        itemAmountText = GetComponentInChildren<TMP_Text>();
 
-        // Находим InventoryManager и PlayerController
         inventoryManager = FindObjectOfType<InventoryManager>();
         playerController = FindObjectOfType<FinalPlayerController>();
 
-        // Скрываем иконку по умолчанию
         UpdateVisual();
-    }
-
+    }   
     void UpdateVisual()
     {
         if (iconGameObject != null)
@@ -66,7 +59,7 @@ public class slot : MonoBehaviour, IPointerClickHandler
     // Клик по слоту
     public void OnPointerClick(PointerEventData eventData)
     {
-        // 1. Режим выбора для стиральной машины
+        // Режим выбора для стиральной машины
         if (inventoryManager != null && inventoryManager.IsInWashingMachineSelectionMode())
         {
             if (!isEmpty)
@@ -76,24 +69,19 @@ public class slot : MonoBehaviour, IPointerClickHandler
             return;
         }
 
-        // 2. Обычная логика инвентаря
+        // Обычная логика инвентаря
         if (eventData.button == PointerEventData.InputButton.Left)
         {
             if (isEmpty)
             {
-                // ЛКМ на пустой слот: кладем предмет из руки
-                PlaceItemFromHand();
+                // Пустой слот – кладём предмет из руки
+                inventoryManager.PlaceItemToSlot(this);
             }
             else
             {
-                // ЛКМ на занятый слот: берем предмет в руку
-                TakeItemToHand();
+                // Занятый слот – берём предмет в руку
+                inventoryManager.TakeItemFromSlot(this);
             }
-        }
-        else if (eventData.button == PointerEventData.InputButton.Right)
-        {
-            // ПКМ: специальное действие (можно убрать если не нужно)
-            Debug.Log("ПКМ по слоту");
         }
     }
 
@@ -149,13 +137,14 @@ public class slot : MonoBehaviour, IPointerClickHandler
         Debug.Log($"✅ Взял предмет из слота в руку: {takenItem.ItemName}");
     }
 
-    public void FillSlot(ItemScriptableObject newItem, int newAmount)
-    {
-        item = newItem;
-        amount = newAmount;
-        isEmpty = false;
-        UpdateVisual();
-    }
+public void FillSlot(ItemScriptableObject newItem, int newAmount)
+{
+    item = newItem;
+    amount = newAmount;
+    isEmpty = false;
+    if (iconGameObject != null) iconGameObject.SetActive(true);
+    UpdateVisual();
+}
 
     public void ClearSlot()
     {

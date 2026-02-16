@@ -102,16 +102,10 @@ public class WashingMachineWithInventory : WashingMachine
         }
 
         if (selectFromInventoryBtn != null)
-            selectFromInventoryBtn.onClick.AddListener(OpenPlayerInventoryForSelection);
-
-        if (startWashButton != null)
-            startWashButton.onClick.AddListener(StartWashingProcess);
-
-        if (clearMachineButton != null)
-            clearMachineButton.onClick.AddListener(ClearAllSlots);
-
-        if (closeButton != null)
-            closeButton.onClick.AddListener(CloseUI); // можно оставить, но теперь CloseUI пустой
+{
+    selectFromInventoryBtn.onClick.RemoveAllListeners();
+    selectFromInventoryBtn.onClick.AddListener(MoveFirstItemFromInventoryToMachine);
+}
 
         SetupWashModeToggles();
         SetMode(WashMode.Colored);
@@ -150,45 +144,37 @@ public class WashingMachineWithInventory : WashingMachine
         base.SetMode(mode);
         UpdateModeDisplay();
     }
-
     public void OpenPlayerInventoryForSelection()
+{
+    Debug.Log("OpenPlayerInventoryForSelection: start");
+    if (playerInventory == null)
     {
-        if (playerInventory == null)
-        {
-            Debug.LogError("InventoryManager не назначен!");
-            return;
-        }
-
-        bool hasEmptySlot = false;
-        foreach (var s in machineSlots)
-        {
-            if (s.isEmpty)
-            {
-                hasEmptySlot = true;
-                break;
-            }
-        }
-
-        if (!hasEmptySlot)
-        {
-            Debug.LogWarning("Нет свободных слотов в стиральной машине!");
-            return;
-        }
-
-        // ========== ИЗМЕНЕНИЕ: убрали CloseUI() ==========
-        // CloseUI();   // <-- удалено
-
-        if (!playerInventory.isOpened)
-            playerInventory.ToggleInventory();
-
-        playerInventory.OpenForWashingMachineSelection(this, -1);
-
-        if (player != null)
-            player.SetInputEnabled(false);
-
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
+        playerInventory = FindObjectOfType<InventoryManager>();
+        Debug.Log("playerInventory найден: " + (playerInventory != null));
     }
+
+    bool hasEmptySlot = false;
+    foreach (var s in machineSlots)
+        if (s.isEmpty) { hasEmptySlot = true; break; }
+
+    if (!hasEmptySlot)
+    {
+        Debug.LogWarning("Нет свободных слотов в машине");
+        return;
+    }
+
+    if (!playerInventory.isOpened)
+        playerInventory.ToggleInventory();
+
+    playerInventory.OpenForWashingMachineSelection(this, -1);
+    Debug.Log("OpenForWashingMachineSelection вызван, currentMachine установлен? " + (playerInventory.IsInWashingMachineSelectionMode()));
+
+    if (player != null)
+        player.SetInputEnabled(false);
+
+    Cursor.lockState = CursorLockMode.None;
+    Cursor.visible = true;
+}
 
     // ========== ИЗМЕНЕНИЕ: методы OpenMachineUI и CloseUI теперь пустые (или их можно удалить) ==========
     public void OpenMachineUI() { }   // больше ничего не делает
@@ -196,6 +182,63 @@ public class WashingMachineWithInventory : WashingMachine
 
     public bool IsUIOpen() => machineCanvas != null && machineCanvas.gameObject.activeSelf;
 
+    public void MoveFirstItemFromInventoryToMachine()
+{
+    if (playerInventory == null)
+        playerInventory = FindObjectOfType<InventoryManager>();
+    
+    if (playerInventory == null)
+    {
+        Debug.LogError("InventoryManager не найден!");
+        return;
+    }
+
+    // 1. Ищем первый непустой слот в инвентаре игрока
+    slot firstInventorySlot = null;
+    foreach (var slot in playerInventory.slots)
+    {
+        if (!slot.isEmpty)
+        {
+            firstInventorySlot = slot;
+            break;
+        }
+    }
+
+    if (firstInventorySlot == null)
+    {
+        Debug.Log("В инвентаре нет предметов для загрузки");
+        return;
+    }
+
+    // 2. Ищем первый пустой слот в стиральной машине
+    int emptyMachineSlotIndex = -1;
+    for (int i = 0; i < machineSlots.Count; i++)
+    {
+        if (machineSlots[i].isEmpty)
+        {
+            emptyMachineSlotIndex = i;
+            break;
+        }
+    }
+
+    if (emptyMachineSlotIndex == -1)
+    {
+        Debug.Log("В стиральной машине нет свободных слотов");
+        return;
+    }
+
+    // 3. Переносим предмет
+    ItemScriptableObject itemToMove = firstInventorySlot.item;
+    int amount = firstInventorySlot.amount;
+
+    machineSlots[emptyMachineSlotIndex].FillSlot(itemToMove, amount);
+    firstInventorySlot.ClearSlot();
+
+    // 4. Обновляем UI машины
+    UpdateUI();
+
+    Debug.Log($"✅ Предмет {itemToMove.ItemName} перемещён из инвентаря в машину (слот {emptyMachineSlotIndex})");
+}
     public void UpdateUI()
     {
         currentLoad = GetItemsCount();
@@ -259,9 +302,15 @@ public class WashingMachineWithInventory : WashingMachine
         if (!isWashing && durationText != null)
         {
             float duration = GetCurrentWashDuration();
-            durationText.text = $"Длительность: {duration} сек.";
+            durationText.text = $"Длительность: {duration} сек.";   
+        }
+        if (selectFromInventoryBtn != null)
+        {
+            selectFromInventoryBtn.onClick.RemoveAllListeners();
+            selectFromInventoryBtn.onClick.AddListener(MoveFirstItemFromInventoryToMachine);
         }
     }
+    
 
     void Update()
     {

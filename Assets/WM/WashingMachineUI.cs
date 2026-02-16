@@ -8,7 +8,8 @@ public class WashingMachineUI : MonoBehaviour
     [Header("Основные элементы")]
     public GameObject panel;
     public Button closeButton;
-
+[Header("VR Interaction")]
+public FinalPlayerController playerController;
     [Header("Режимы стирки - ТЕПЕРЬ ТОЛЬКО 3")]
     public Toggle coloredToggle;
     public Toggle delicateToggle;
@@ -57,7 +58,7 @@ public class WashingMachineUI : MonoBehaviour
             closeButton.onClick.AddListener(CloseUI); // можно оставить, но CloseUI пустой
 
         startWashButton?.onClick.AddListener(StartWashing);
-
+  SetupSlotInteractions();
         SetupModeToggles();
         FindManagers();
 
@@ -74,6 +75,27 @@ public class WashingMachineUI : MonoBehaviour
         }
     }
 
+    
+private void SetupSlotInteractions()
+{
+    if (playerController == null)
+        playerController = FindObjectOfType<FinalPlayerController>();
+
+    foreach (var slot in washingSlot)
+    {
+        if (slot == null) continue;
+
+        // Убедимся, что на слоте есть компонент Button для кликов
+        Button btn = slot.GetComponent<Button>();
+        if (btn == null)
+            btn = slot.gameObject.AddComponent<Button>();
+
+        // Очищаем старые слушатели и добавляем новый
+        btn.onClick.RemoveAllListeners();
+        slot capturedSlot = slot; // избегаем замыкания
+        btn.onClick.AddListener(() => OnSlotClicked(capturedSlot));
+    }
+}
     void UpdateModeInfo()
     {
         if (washingMachine == null) return;
@@ -314,7 +336,64 @@ public class WashingMachineUI : MonoBehaviour
         isWashing = false;
         UpdateUIPublic();
     }
+public void OnSlotClicked(slot clickedSlot)
+{
+    if (washingMachine == null || clickedSlot == null) return;
 
+    // Не взаимодействуем во время стирки
+    if (washingMachine.isWashing)
+    {
+        Debug.Log("Машина работает, нельзя менять загрузку");
+        return;
+    }
+
+    // Находим менеджеры, если не заданы
+    if (inventoryManager == null)
+        inventoryManager = FindObjectOfType<InventoryManager>();
+    if (playerController == null)
+        playerController = FindObjectOfType<FinalPlayerController>();
+
+    // Случай 1: в руке есть предмет из инвентаря
+    if (inventoryManager.HasItemInHand())
+    {
+        ItemScriptableObject itemInHand = inventoryManager.GetHeldItem();
+        int amountInHand = inventoryManager.GetHeldItemAmount();
+
+        // Можно добавить проверку, что это одежда (например, itemInHand.category == "Clothes")
+        if (clickedSlot.isEmpty)
+        {
+            // Кладём предмет в слот машины
+            clickedSlot.FillSlot(itemInHand, amountInHand);
+            inventoryManager.ClearHand(); // Очищает руку и уведомляет контроллер
+            Debug.Log($"Предмет {itemInHand.ItemName} загружен в стиральную машину");
+        }
+        else
+        {
+            Debug.Log("Слот уже занят");
+        }
+    }
+    else
+    {
+        // Случай 2: рука пуста, но в слоте есть предмет — берём его в руку
+        if (!clickedSlot.isEmpty)
+        {
+            ItemScriptableObject itemInSlot = clickedSlot.item;
+            int amountInSlot = clickedSlot.amount;
+
+            // Устанавливаем предмет в руку через InventoryManager (с визуалом)
+            inventoryManager.SetHeldItemWithVisual(itemInSlot, amountInSlot);
+            clickedSlot.ClearSlot();
+            Debug.Log($"Предмет {itemInSlot.ItemName} взят из машины в руку");
+        }
+        else
+        {
+            Debug.Log("Слот пуст, в руке ничего нет");
+        }
+    }
+
+
+    UpdateUIPublic();
+}
     void SetupModeToggles()
     {
         if (coloredToggle != null)
