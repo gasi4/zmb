@@ -49,7 +49,7 @@ public class ZombieUI : MonoBehaviour
         if (spawnManager == null)
         {
             // ��������� ����� �������������
-            spawnManager = FindObjectOfType<ZombieSpawnManager>();
+            spawnManager = FindFirstObjectByType<ZombieSpawnManager>();
             if (spawnManager == null) return;
         }
 

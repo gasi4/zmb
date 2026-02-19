@@ -26,13 +26,10 @@ public class FinalPlayerController : MonoBehaviour
 
     [Tooltip("Если задан — используется для взгляда вместо rightStick.")]
     public InputActionProperty lookAction;
-    
-    [Header("VR Button Actions")]
-    [Tooltip("Primary button on right controller (usually 'A' button)")]
-    public InputActionProperty rightPrimaryButton;
-    
-    [Tooltip("Secondary button on right controller (usually 'B' button)")]
-    public InputActionProperty rightSecondaryButton;
+
+    [Header("VR Grab Mode")]
+    [Tooltip("Кнопка (например клик правого стика). Если нажата при захвате — предмет добавляется в инвентарь, иначе берётся физически в руку.")]
+    public InputActionProperty storeToInventoryModifier;
 
     [Header("Editor Movement Settings")]
     public float mouseSensitivity = 2f;
@@ -47,37 +44,33 @@ public class FinalPlayerController : MonoBehaviour
     public float holdSmoothness = 15f;
 
     [Header("VR Look (Right Stick)")]
-    public float lookSensitivity = 90f;
+    public float lookSensitivity = 90f; // градусов/сек при значении стика = 1
     public float maxPitch = 80f;
 
     [Header("Inventory")]
     public InventoryManager inventoryManager;
     public KeyCode inventoryToggleKey = KeyCode.Tab;
-    public KeyCode pickupKey = KeyCode.E;
+    public KeyCode pickupKey = KeyCode.E; // Кнопка для подбора предметов
+
     private GameObject heldObject = null;
     private Rigidbody heldRigidbody = null;
     private float xRotation = 0f;
     private float yaw = 0f;
 
     [Header("VR Inventory Toggle (Action-based)")]
-    public InputActionProperty vrInventoryToggleAction;
+    public InputActionProperty vrInventoryToggleAction; // кнопка на левом контроллере
     public float vrToggleDebounce = 0.25f;
     private float _nextAllowedVrToggleTime;
-    private bool _vrInventoryWasPressed;
 
     [Header("Inventory Sync")]
     public bool syncInventoryWithHand = true;
+
     private ItemScriptableObject heldInventoryItem;
     private bool inputEnabled = true;
 
     [Header("Delivery Point")]
-    public KeyCode placeOnDeliveryKey = KeyCode.E;
+    public KeyCode placeOnDeliveryKey = KeyCode.E; // Кнопка для класть на точку
     public float deliveryInteractionRange = 10f;
-    
-    private bool _rightPrimaryWasPressed;
-    private bool _rightSecondaryWasPressed;
-    private float _nextAllowedPrimaryPressTime;
-    public float primaryButtonDebounce = 0.25f;
 
     void Start()
     {
@@ -85,18 +78,6 @@ public class FinalPlayerController : MonoBehaviour
         {
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
-        }
-
-        if (vrModeActive)
-        {
-            if (vrInventoryToggleAction.action != null && !vrInventoryToggleAction.action.enabled)
-                vrInventoryToggleAction.action.Enable();
-                
-            if (rightPrimaryButton.action != null && !rightPrimaryButton.action.enabled)
-                rightPrimaryButton.action.Enable();
-                
-            if (rightSecondaryButton.action != null && !rightSecondaryButton.action.enabled)
-                rightSecondaryButton.action.Enable();
         }
 
         if (unifiedRay != null)
@@ -110,14 +91,27 @@ public class FinalPlayerController : MonoBehaviour
             }
 
             deliveryInteractionRange = Mathf.Max(deliveryInteractionRange, 10f);
-
-            if (playerCamera != null)
-            {
-                Vector3 e = playerCamera.localEulerAngles;
-                yaw = e.y;
-                xRotation = NormalizeAngle(e.x);
-            }
         }
+
+        if (playerCamera != null)
+        {
+            Vector3 e = playerCamera.localEulerAngles;
+            yaw = e.y;
+            xRotation = NormalizeAngle(e.x);
+        }
+    }
+
+    public void SetInputEnabled(bool value)
+    {
+        inputEnabled = value;
+    }
+
+    bool IsStoreToInventoryModifierPressed()
+    {
+        if (!vrModeActive) return false;
+        InputAction a = storeToInventoryModifier.action;
+        if (a == null || !a.enabled) return false;
+        return a.ReadValue<float>() > 0.5f;
     }
 
     static float NormalizeAngle(float angle)
@@ -129,98 +123,50 @@ public class FinalPlayerController : MonoBehaviour
 
     void Update()
     {
+        if (!inputEnabled) return;
+
         if (vrModeActive)
         {
-            HandleVRLook();
-            HandleVRInventoryToggle();
-            HandleVRPrimaryButton();
-            HandleVRSecondaryButton();
+            HandleVRMode();
+        }
+        else
+        {
+            HandleEditorMode();
         }
 
+        // Editor fallback
         if (Input.GetKeyDown(inventoryToggleKey))
             inventoryManager?.ToggleInventory();
-    }
-    
-    void HandleVRPrimaryButton()
-    {
-        if (inventoryManager == null) return;
-        if (rightPrimaryButton.action == null) return;
-        
-        if (!rightPrimaryButton.action.enabled)
-            rightPrimaryButton.action.Enable();
-            
-        if (Time.time < _nextAllowedPrimaryPressTime) return;
-        
-        bool pressedNow = rightPrimaryButton.action.ReadValue<float>() > 0.5f;
-        
-        if (pressedNow && !_rightPrimaryWasPressed)
-        {
-            Debug.Log("🔵 Primary button (A) pressed");
-            
-            // Primary (Right Hand): перемещаем предмет в первый пустой слот инвентаря
-            bool stored = TryStoreHeldItemInInventory();
-            
 
-            if (stored)
-            {
-                Debug.Log("✅ Предмет успешно перемещен в инвентарь");
-                SendHapticFeedback(rightController, 0.5f, 0.1f);
-            }
-            else
-            {
-                Debug.Log("❌ Не удалось переместить предмет в инвентарь");
-                SendHapticFeedback(rightController, 0.2f, 0.3f);
-            }
-            
-            _nextAllowedPrimaryPressTime = Time.time + primaryButtonDebounce;
-            _rightPrimaryWasPressed = true;
-        }
-        else if (!pressedNow && _rightPrimaryWasPressed)
+        if (Input.GetKeyDown(placeOnDeliveryKey))
+            TryPlaceOnDeliveryPoint();
+
+        if (Input.GetKeyDown(pickupKey))
+            TryPickupItem();
+    }
+
+    void HandleVRMode()
+    {
+        HandleVRLook();
+        HandleGrabVR();
+        HandleVRInventoryToggle();
+
+        if (unifiedRay != null && rightHandTransform != null)
         {
-            _rightPrimaryWasPressed = false;
+            unifiedRay.vrModeActive = true;
+            unifiedRay.rightHandTransform = rightHandTransform;
         }
     }
-    
-    void HandleVRSecondaryButton()
+
+    void HandleEditorMode()
     {
-        if (rightSecondaryButton.action == null) return;
-        
-        if (!rightSecondaryButton.action.enabled)
-            rightSecondaryButton.action.Enable();
-            
-        bool pressedNow = rightSecondaryButton.action.ReadValue<float>() > 0.5f;
-        
-        if (pressedNow && !_rightSecondaryWasPressed)
+        HandleEditorCamera();
+        HandleEditorMovement();
+        HandleEditorGrab();
+
+        if (unifiedRay != null)
         {
-            Debug.Log("🟡 Secondary button (B) pressed");
-            
-            if (heldObject != null)
-            {
-                Drop();
-                SendHapticFeedback(rightController, 0.3f, 0.1f);
-                Debug.Log("Предмет выброшен");
-            }
-            
-            _rightSecondaryWasPressed = true;
-        }
-        else if (!pressedNow && _rightSecondaryWasPressed)
-        {
-            _rightSecondaryWasPressed = false;
-        }
-    }
-    
-    private void SendHapticFeedback(ActionBasedController controller, float amplitude, float duration)
-    {
-        if (controller == null) return;
-        
-        try
-        {
-            controller.SendHapticImpulse(amplitude, duration);
-        }
-        catch (System.Exception e)
-        {
-            if (debugMode)
-                Debug.LogWarning($"Haptic feedback failed: {e.Message}");
+            unifiedRay.vrModeActive = false;
         }
     }
 
@@ -228,108 +174,27 @@ public class FinalPlayerController : MonoBehaviour
     {
         if (inventoryManager == null) return;
         if (vrInventoryToggleAction.action == null) return;
-
-        if (!vrInventoryToggleAction.action.enabled)
-            vrInventoryToggleAction.action.Enable();
-
+        if (!vrInventoryToggleAction.action.enabled) return;
         if (Time.time < _nextAllowedVrToggleTime) return;
 
-        bool pressedNow = vrInventoryToggleAction.action.ReadValue<float>() > 0.5f;
+        bool pressed = vrInventoryToggleAction.action.ReadValue<float>() > 0.5f;
 
-        if (pressedNow && !_vrInventoryWasPressed)
+        if (pressed)
         {
-            if (inventoryManager.isOpened)
-            {
-                inventoryManager.ToggleInventory();
-            }
-            else
-            {
-                bool stored = TryStoreHeldItemInInventory();
-                if (!stored)
-                {
-                    inventoryManager.ToggleInventory();
-                }
-            }
-
+            inventoryManager.ToggleInventory();
             _nextAllowedVrToggleTime = Time.time + vrToggleDebounce;
-            _vrInventoryWasPressed = true;
         }
-        else if (!pressedNow && _vrInventoryWasPressed)
-        {
-            _vrInventoryWasPressed = false;
-        }
-    }
-
-    private bool TryStoreHeldItemInInventory()
-    {
-        if (inventoryManager == null)
-        {
-            Debug.LogWarning("InventoryManager не назначен!");
-            return false;
-        }
-        
-        if (heldObject == null && heldInventoryItem == null)
-        {
-            if (debugMode) Debug.Log("В руке ничего нет");
-            return false;
-        }
-
-        if (HasInventoryItemInHand() && heldInventoryItem != null)
-        {
-            ItemScriptableObject item = heldInventoryItem;
-            int amount = 1;
-
-            if (inventoryManager.TryAddItemToEmptySlot(item, amount))
-            {
-                Debug.Log($"Предмет {item.ItemName} убран из руки в инвентарь");
-                ClearHeldItem();
-                return true;
-            }
-            else
-            {
-                Debug.Log($"Не удалось положить {item.ItemName} в инвентарь (нет места?)");
-                return false;
-            }
-        }
-
-        if (heldObject != null)
-        {
-            Item itemComp = heldObject.GetComponent<Item>();
-            if (itemComp != null && itemComp.item != null)
-            {
-                if (inventoryManager.TryAddItemToEmptySlot(itemComp.item, itemComp.amount))
-                {
-                    Debug.Log($"Физический предмет {itemComp.item.ItemName} убран в инвентарь");
-                    Destroy(heldObject);
-                    ClearHeldItem();
-                    return true;
-                }
-                else
-                {
-                    Debug.Log($"Не удалось положить {itemComp.item.ItemName} в инвентарь (нет места?)");
-                    return false;
-                }
-            }
-            else
-            {
-                Debug.Log($"Объект {heldObject.name} нельзя положить в инвентарь (нет компонента Item)");
-                return false;
-            }
-        }
-
-        return false;
-    }
-
-    public void SetInputEnabled(bool value)
-    {
-        inputEnabled = value;
     }
 
     void HandleVRLook()
     {
         if (playerCamera == null) return;
 
-        InputAction action = lookAction.action != null ? lookAction.action : rightStick.action;
+        InputAction action =
+            lookAction.action != null && lookAction.action.enabled
+                ? lookAction.action
+                : rightStick.action;
+
         if (action == null || !action.enabled) return;
 
         Vector2 stick = action.ReadValue<Vector2>();
@@ -352,6 +217,7 @@ public class FinalPlayerController : MonoBehaviour
             return;
         }
 
+        // Ищем подходящий DeliveryPoint
         DeliveryPoint[] points = FindObjectsOfType<DeliveryPoint>();
         if (points == null || points.Length == 0)
         {
@@ -362,6 +228,7 @@ public class FinalPlayerController : MonoBehaviour
         DeliveryPoint deliveryPoint = null;
         bool selectedByZone = false;
 
+        // 1) Приоритет: стоим в зоне перед полкой
         for (int i = 0; i < points.Length; i++)
         {
             if (points[i] != null && points[i].IsPlayerInInteractionZone(transform))
@@ -372,6 +239,7 @@ public class FinalPlayerController : MonoBehaviour
             }
         }
 
+        // 2) Fallback: ближайший по дистанции
         if (deliveryPoint == null)
         {
             float bestDist = float.MaxValue;
@@ -393,6 +261,7 @@ public class FinalPlayerController : MonoBehaviour
             return;
         }
 
+        // Проверка дистанции
         if (!selectedByZone)
         {
             float distance = Vector3.Distance(transform.position, deliveryPoint.transform.position);
@@ -403,11 +272,13 @@ public class FinalPlayerController : MonoBehaviour
             }
         }
 
+        // Проверяем что это предмет
         Item itemComponent = heldObject.GetComponent<Item>();
         if (itemComponent == null)
         {
             if (heldInventoryItem != null && heldInventoryItem.WorldPrefab != null)
             {
+                // Меняем "визуал в руке" на реальный объект мира с компонентом Item
                 GameObject worldItem = Instantiate(heldInventoryItem.WorldPrefab);
                 worldItem.transform.position = heldObject.transform.position;
                 worldItem.transform.rotation = heldObject.transform.rotation;
@@ -418,6 +289,7 @@ public class FinalPlayerController : MonoBehaviour
                 itemComponent.item = heldInventoryItem;
                 itemComponent.amount = 1;
 
+                // Заменяем heldObject на созданный предмет
                 Destroy(heldObject);
                 heldObject = worldItem;
             }
@@ -428,6 +300,7 @@ public class FinalPlayerController : MonoBehaviour
             }
         }
 
+        // Ищем ближайшего зомби, который ждет вещь
         ZombieCustomer nearestZombie = FindNearestWaitingZombie();
         if (nearestZombie == null)
         {
@@ -435,9 +308,12 @@ public class FinalPlayerController : MonoBehaviour
             return;
         }
 
+        // Пытаемся положить вещь на точку
         if (deliveryPoint.PlaceItem(heldObject, nearestZombie))
         {
             Debug.Log($"✅ Вещь {heldObject.name} положена на Delivery Point для зомби {nearestZombie.name}");
+
+            // Очищаем руку
             ClearHeldItem();
         }
         else
@@ -448,6 +324,7 @@ public class FinalPlayerController : MonoBehaviour
 
     ZombieCustomer FindNearestWaitingZombie()
     {
+        // 1) Приоритет: зомби на первом месте очереди
         CustomerQueueManager queue = FindObjectOfType<CustomerQueueManager>();
         if (queue != null)
         {
@@ -459,6 +336,7 @@ public class FinalPlayerController : MonoBehaviour
             }
         }
 
+        // 2) Fallback: ближайший зомби в состоянии Waiting
         ZombieCustomer[] allZombies = FindObjectsOfType<ZombieCustomer>();
         ZombieCustomer nearestZombie = null;
         float minDistance = float.MaxValue;
@@ -488,52 +366,7 @@ public class FinalPlayerController : MonoBehaviour
         return nearestZombie;
     }
 
-    bool IsWashingMachineUIOpen()
-    {
-        WashingMachineWithInventory[] machines = FindObjectsOfType<WashingMachineWithInventory>();
-        foreach (var machine in machines)
-        {
-            if (machine.machineCanvas != null && machine.machineCanvas.gameObject.activeSelf)
-                return true;
-        }
-
-        WashingMachineUI[] oldMachines = FindObjectsOfType<WashingMachineUI>();
-        foreach (var machine in oldMachines)
-        {
-            if (machine.panel != null && machine.panel.activeSelf)
-                return true;
-        }
-
-        return false;
-    }
-
-    void HandleVRMode()
-    {
-        HandleGrabVR();
-
-        if (unifiedRay != null && rightHandTransform != null)
-        {
-            unifiedRay.vrModeActive = true;
-            unifiedRay.rightHandTransform = rightHandTransform;
-        }
-    }
-
-    void HandleEditorMode()
-    {
-        HandleEditorCamera();
-        HandleEditorMovement();
-        HandleEditorGrab();
-
-        if (heldObject != null && handForEmulation != null)
-        {
-            UpdateHeldObjectEditor();
-        }
-
-        if (unifiedRay != null)
-        {
-            unifiedRay.vrModeActive = false;
-        }
-    }
+    
 
     #region Editor Mode Controls
     void HandleEditorCamera()
@@ -571,8 +404,6 @@ public class FinalPlayerController : MonoBehaviour
                 Drop();
         }
     }
-
-    void UpdateHeldObjectEditor() { }
     #endregion
 
     #region Item Pickup System
@@ -591,28 +422,18 @@ public class FinalPlayerController : MonoBehaviour
         GameObject hitObject = hit.collider.gameObject;
         Debug.Log($"🎯 Луч попал в: {hitObject.name}");
 
+        // ========== ИЗМЕНЕНИЕ: Новая стиралка с UI ==========
         var machine = hitObject.GetComponentInParent<WashingMachineWithInventory>();
-        if (machine != null)
-        {
-            Debug.Log("🧺 Открываю UI новой стиралки");
-            machine.OpenMachineUI();
+        
 
-            if (unifiedRay != null) unifiedRay.enabled = false;
-            SetInputEnabled(false);
-            return;
-        }
-
+        // ========== ИЗМЕНЕНИЕ: Старая стиралка ==========
         var oldMachine = hitObject.GetComponentInParent<WashingMachineUI>();
         if (oldMachine != null)
         {
-            Debug.Log("🧺 Открываю UI старой стиралки");
-            oldMachine.ToggleMenu();
-
-            if (unifiedRay != null) unifiedRay.enabled = false;
-            SetInputEnabled(false);
             return;
         }
 
+        // 2️⃣ Если это предмет мира, берём в руку
         GrabItemToHand(hitObject);
     }
 
@@ -628,50 +449,48 @@ public class FinalPlayerController : MonoBehaviour
         }
     }
 
-void GrabPhysicalObject(GameObject obj)
-{
-    if (obj == null) return;
-
-    // Не даём хватать объекты стиральных машин
-    if (obj.GetComponentInParent<WashingMachineWithInventory>() != null) return;
-    if (obj.GetComponentInParent<WashingMachineUI>() != null) return;
-
-    Item itemComponent = obj.GetComponent<Item>();
-    bool isInventoryItem = (itemComponent != null && itemComponent.item != null);
-
-    // Если это предмет инвентаря (одежда и т.п.) – сразу кладём в инвентарь
-    if (isInventoryItem)
+    void GrabPhysicalObject(GameObject obj)
     {
-        if (inventoryManager != null)
+        if (obj == null) return;
+
+        // Если это стиралка — выходим
+        if (obj.GetComponentInParent<WashingMachineWithInventory>() != null) return;
+        if (obj.GetComponentInParent<WashingMachineUI>() != null) return;
+
+        Item itemComponent = obj.GetComponent<Item>();
+        bool isInventoryItem = (itemComponent != null && itemComponent.item != null);
+
+        if (isInventoryItem)
         {
-            inventoryManager.AddItem(itemComponent.item, itemComponent.amount);
-            Debug.Log($"Предмет {itemComponent.item.ItemName} добавлен в инвентарь");
+            // Если зажат модификатор — кладём в инвентарь
+            if (IsStoreToInventoryModifierPressed())
+            {
+                inventoryManager?.AddItem(itemComponent.item, itemComponent.amount);
+                Destroy(obj);
+                return;
+            }
         }
-        Destroy(obj); // Уничтожаем физический объект в мире
-        return;
+
+        Rigidbody rb = obj.GetComponent<Rigidbody>();
+        if (rb == null)
+        {
+            Debug.Log("Нет Rigidbody для захвата");
+            return;
+        }
+
+        heldObject = obj;
+        heldRigidbody = rb;
+        heldRigidbody.isKinematic = true;
+
+        if (handForEmulation != null)
+        {
+            heldObject.transform.SetParent(handForEmulation);
+            heldObject.transform.localPosition = Vector3.zero;
+            heldObject.transform.localRotation = Quaternion.identity;
+        }
+
+        Debug.Log("📦 Предмет взят в руку");
     }
-
-    // Для обычных физических объектов (не предметов инвентаря) – старый код
-    Rigidbody rb = obj.GetComponent<Rigidbody>();
-    if (rb == null)
-    {
-        Debug.Log("Нет Rigidbody для захвата");
-        return;
-    }
-
-    heldObject = obj;
-    heldRigidbody = rb;
-    heldRigidbody.isKinematic = true;
-
-    if (handForEmulation != null)
-    {
-        heldObject.transform.SetParent(handForEmulation);
-        heldObject.transform.localPosition = Vector3.zero;
-        heldObject.transform.localRotation = Quaternion.identity;
-    }
-
-    Debug.Log("📦 Предмет взят в руку");
-}
 
     public void GrabItemFromInventory(ItemScriptableObject item, int amount)
     {
@@ -681,11 +500,13 @@ void GrabPhysicalObject(GameObject obj)
             return;
         }
 
+        // Если уже что-то в руке - убираем
         if (heldObject != null)
         {
             HideHeldObject();
         }
 
+        // Создаем визуал предмета в руке
         Transform targetHand = vrModeActive ? rightHandTransform : handForEmulation;
         if (targetHand == null) return;
 
@@ -695,9 +516,11 @@ void GrabPhysicalObject(GameObject obj)
         heldObject.transform.localRotation = Quaternion.identity;
         heldObject.transform.localScale = Vector3.one;
 
+        // Убираем физику
         DestroyIfExists<Rigidbody>(heldObject);
         DestroyIfExists<Collider>(heldObject);
 
+        // Сохраняем ссылку на предмет инвентаря
         heldInventoryItem = item;
 
         Debug.Log($"✅ {item.ItemName} визуально экипирован в руку");
@@ -725,23 +548,34 @@ void GrabPhysicalObject(GameObject obj)
             return;
         }
 
+        // Создаём anchor
         GameObject anchor = new GameObject("HandAnchor");
         anchor.transform.SetParent(targetHand);
 
+        // Вычисляем компенсированный масштаб
         Vector3 parentScale = targetHand.lossyScale;
-        Vector3 inverseScale = new Vector3(1f / parentScale.x, 1f / parentScale.y, 1f / parentScale.z);
+        Vector3 inverseScale = new Vector3(
+            1f / parentScale.x,
+            1f / parentScale.y,
+            1f / parentScale.z
+        );
+
         anchor.transform.localScale = inverseScale;
 
-        anchor.transform.localPosition = new Vector3(0f, -0.1f, 20f);
+        // Смещение вперед относительно руки
+        anchor.transform.localPosition = new Vector3(0f, -0.1f, 0.2f);
         anchor.transform.localRotation = Quaternion.identity;
 
+        // Сохраняем оригинальный масштаб предмета
         Vector3 originalScale = heldObject.transform.localScale;
 
+        // Вставляем предмет в anchor
         heldObject.transform.SetParent(anchor.transform);
         heldObject.transform.localPosition = Vector3.zero;
         heldObject.transform.localRotation = Quaternion.identity;
         heldObject.transform.localScale = originalScale;
 
+        // Отключаем Rigidbody/Collider
         DestroyIfExists<Rigidbody>(heldObject);
         DestroyIfExists<Collider>(heldObject);
 
@@ -756,6 +590,7 @@ void GrabPhysicalObject(GameObject obj)
 
         heldObject.SetActive(false);
         heldObject.transform.SetParent(null);
+
         heldRigidbody = null;
     }
 
@@ -802,12 +637,14 @@ void GrabPhysicalObject(GameObject obj)
 
         Debug.Log($"Бросаю: {heldObject.name}");
 
+        // Проверяем, предмет из инвентаря или из мира
         if (inventoryManager != null && inventoryManager.HasItemInHand())
         {
             inventoryManager.DropHeldItem();
         }
         else
         {
+            // Физический объект из мира
             heldObject.transform.SetParent(null);
 
             if (heldRigidbody != null)
@@ -828,6 +665,7 @@ void GrabPhysicalObject(GameObject obj)
     void HandleGrabVR()
     {
         if (rightController == null || unifiedRay == null) return;
+
         if (rightController.selectAction == null) return;
 
         bool pressed = rightController.selectAction.action.ReadValue<float>() > 0.5f;

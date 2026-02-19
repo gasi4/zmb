@@ -240,7 +240,7 @@ public class ZombieWaveManager : MonoBehaviour
     DeliveryPoint GetDeliveryPoint()
     {
         // Ищем DeliveryPoint в сцене
-        DeliveryPoint point = FindObjectOfType<DeliveryPoint>();
+        DeliveryPoint point = FindAnyObjectByType<DeliveryPoint>();
         if (point == null && testMode)
         {
             Debug.LogWarning("Не найден DeliveryPoint в сцене!");

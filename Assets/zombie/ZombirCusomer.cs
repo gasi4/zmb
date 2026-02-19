@@ -399,7 +399,7 @@ public class ZombieCustomer : MonoBehaviour
                 cachedPlayerHealth = playerTarget != null ? playerTarget.GetComponentInParent<PlayerHealth>() : null;
 
             if (cachedPlayerHealth == null)
-                cachedPlayerHealth = FindObjectOfType<PlayerHealth>();
+                cachedPlayerHealth = FindFirstObjectByType<PlayerHealth>();
 
             TryAttack(cachedPlayerHealth);
         }
@@ -648,11 +648,11 @@ public class ZombieCustomer : MonoBehaviour
         }
 
 
-}
+    }
 
     void TryAttack(PlayerHealth ph)
     {
-        
+
         if (ph == null) return;
 
         // Во время атаки всегда разворачиваемся к игроку (по XZ), чтобы удар выглядел правильно
@@ -704,44 +704,15 @@ public class ZombieCustomer : MonoBehaviour
                 animator.SetBool(isAttackingBool, true);
         }
 
-        void StopAttackAnimationBool()
-        {
-            if (!useIsAttackingBool) return;
+        // StopAttackAnimationBool() удалён: метод не вызывался и создавал предупреждение компилятора.
 
-            if (animator == null) return;
-
-            if (!string.IsNullOrEmpty(isAttackingBool))
-                animator.SetBool(isAttackingBool, false);
-        }
 
         // Убрано OnCollisionStay и OnTriggerStay, т.к. теперь урон по dist в TryAttack (из Update/AttackLoop).
         // Это позволяет наносить урон без Trigger на зомби (чтобы не проходить сквозь), 
         // но с физическим collider'ом на игроке (для барьера).
-
-        System.Collections.IEnumerator AttackLoop()
-        {
-            while (currentState == ZombieState.Angry)
-            {
-                if (cachedPlayerHealth == null)
-                    cachedPlayerHealth = playerTarget != null ? playerTarget.GetComponentInParent<PlayerHealth>() : null;
-
-                if (cachedPlayerHealth == null)
-                    cachedPlayerHealth = FindObjectOfType<PlayerHealth>();
-
-                // Если по какой-то причине преследование остановилось — обновим цель на игрока
-                if (playerTarget != null)
-                {
-                    SimpleZombieMovement movement = GetComponent<SimpleZombieMovement>();
-                    if (movement != null && movement.target != playerTarget)
-                        movement.SetTarget(playerTarget);
-                }
-
-                TryAttack(cachedPlayerHealth);
-
-                yield return new WaitForSeconds(attackCooldown);
-            }
-        }
+        // AttackLoop() удалён: корутина не запускалась и создавалась локально без использования.
         SimpleZombieMovement movement = GetComponent<SimpleZombieMovement>();
+        ;
         if (movement != null)
         {
             // Если в зоне удара — стопаем движение
@@ -757,7 +728,7 @@ public class ZombieCustomer : MonoBehaviour
         }
     }
 
-        public void DeliverItem(GameObject deliveredItem)
+    public void DeliverItem(GameObject deliveredItem)
     {
         // Этот метод теперь вызывается из DeliveryPoint
         // Старая логика удалена

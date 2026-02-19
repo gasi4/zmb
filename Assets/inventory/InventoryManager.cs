@@ -1,19 +1,12 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.UI;
-using UnityEngine.InputSystem;
+using UnityEngine.UI; // Добавьте эту строку!
 
 public class InventoryManager : MonoBehaviour
 {
     public GameObject uiPanel;
     public FinalPlayerController playerController;
-
-    [Header("VR Input (Input System)")]
-    [SerializeField] private InputActionReference vrInventoryToggleAction;
-    [SerializeField] private float vrToggleDebounce = 0.25f;
-    private float _lastVrToggleTime = -999f;
-
     public Transform inventoryPanel;
     public List<slot> slots = new List<slot>();
     public bool isOpened = false;
@@ -22,26 +15,106 @@ public class InventoryManager : MonoBehaviour
     private ItemScriptableObject heldItem;
     private int heldItemAmount = 0;
 
+
     public List<GameObject> items = new List<GameObject>();
     private WashingMachineWithInventory currentMachine;
     private int targetSlot = -1;
-    private bool isInWashingMachineSelectionMode = false;
-    private UIFollowCamera uiFollowCamera;
+
+
+
+    // В классе InventoryManager
+    public void OpenForWashingMachineSelection(WashingMachineWithInventory machine, int slotIndex)
+
+    {
+        currentMachine = machine;
+        targetSlot = slotIndex;
+
+        // Открываем инвентарь если закрыт
+        if (!isOpened)
+        {
+            ToggleInventory();
+        }
+
+        // Добавляем информацию о режиме выбора
+        Debug.Log($"Режим выбора предмета для машинки активен. Кликните на предмет для перемещения в машинку");
+
+        // Можно также добавить визуальную индикацию режима
+        // Например, изменить цвет заголовка или добавить подсказку
+    }
+
+
+
+    public void SelectItemForWashing(GameObject item)
+    {
+        // (FIX) убран лишний '{' чтобы не было синтаксической ошибки
+        if (currentMachine == null || item == null) return;
+
+
+        // Ищем первый пустой слот в машинке
+        int emptySlot = -1;
+        for (int i = 0; i < currentMachine.machineSlots.Count; i++)
+        {
+            if (currentMachine.machineSlots[i].isEmpty)
+            {
+                emptySlot = i;
+                break;
+            }
+        }
+
+        if (emptySlot == -1)
+        {
+            Debug.LogWarning("Нет свободных слотов в машинке!");
+            return;
+        }
+
+        // Кладём предмет в слот машинки
+        Item itemComp = item.GetComponent<Item>();
+        if (itemComp == null) return;
+        currentMachine.machineSlots[emptySlot].FillSlot(itemComp.item, itemComp.amount);
+        // Убираем предмет из инвентаря игрока
+
+        int idx = items.IndexOf(item);
+
+        if (idx >= 0) RemoveItemFromSlot(idx);
+        item.SetActive(false);
+
+
+
+        // Обновляем UI машинки
+        currentMachine.UpdateUI();
+
+        Debug.Log($"Предмет {itemComp.item.ItemName} добавлен в машинку в слот {emptySlot}");
+    }
+
+
+    public GameObject GetItemFromSlot(int index)
+    {
+        if (index < 0 || index >= items.Count) return null;
+        return items[index];
+    }
+
+    public bool RemoveItemFromSlot(int index)
+    {
+        if (index < 0 || index >= items.Count) return false;
+        items[index].SetActive(false);
+        items.RemoveAt(index);
+        return true;
+    }
+
+    public int FindEmptySlot() => items.Count; // упрощено
+    public void ReturnItemToSlot(GameObject item, int slot) => items.Add(item);
 
     void Start()
     {
         Debug.Log("InventoryManager Start вызван");
 
-        // Инвентарь должен быть всегда включен при старте
+        // Инвентарь должен быть виден всегда
         if (uiPanel != null)
         {
-            if (uiFollowCamera != null)
-                uiFollowCamera.Show();
-            else
-                uiPanel.SetActive(true);
-
+            uiPanel.SetActive(true);
             isOpened = true;
         }
+
 
         // Находим все слоты
         if (inventoryPanel != null)
@@ -87,84 +160,6 @@ public class InventoryManager : MonoBehaviour
         }
 
         Debug.Log($"Всего найдено слотов: {slots.Count}");
-        // Получаем компонент следования
-        if (uiPanel != null)
-        {
-            uiFollowCamera = uiPanel.GetComponent<UIFollowCamera>();
-            if (uiFollowCamera == null)
-            {
-                Debug.LogWarning("UIFollowCamera component not found on uiPanel. Adding it...");
-                uiFollowCamera = uiPanel.AddComponent<UIFollowCamera>();
-            }
-        }
-
-        // ПОЛУЧАЕМ КОМПОНЕНТ СЛЕДОВАНИЯ - ПРИНУДИТЕЛЬНО!
-        if (uiPanel != null)
-        {
-            uiFollowCamera = uiPanel.GetComponent<UIFollowCamera>();
-            if (uiFollowCamera == null)
-            {
-                Debug.LogWarning("UIFollowCamera not found, adding it...");
-                uiFollowCamera = uiPanel.AddComponent<UIFollowCamera>();
-            }
-            else
-            {
-                Debug.Log("UIFollowCamera found successfully!");
-            }
-
-            // Проверяем, что камера настроена
-            if (uiFollowCamera.playerCamera == null)
-            {
-                uiFollowCamera.playerCamera = Camera.main?.transform;
-                Debug.Log($"Camera set to: {uiFollowCamera.playerCamera?.name}");
-            }
-        }
-        Debug.Log($"uiFollowCamera after setup: {uiFollowCamera != null}");
-
-        // На всякий случай принудительно показываем UI после инициализации UIFollowCamera
-        if (uiPanel != null)
-        {
-            if (uiFollowCamera != null) uiFollowCamera.Show();
-            else uiPanel.SetActive(true);
-            isOpened = true;
-        }
-    }
-
-    // Пытается добавить предмет в первый пустой слот. Возвращает true при успехе.
-    public bool TryAddItemToEmptySlot(ItemScriptableObject item, int amount)
-    {
-        if (item == null) return false;
-
-        foreach (slot slot in slots)
-        {
-            if (slot.isEmpty)
-            {
-                slot.FillSlot(item, amount);
-                Debug.Log($"Предмет {item.ItemName} добавлен в слот {slot.gameObject.name}");
-                return true;
-            }
-        }
-
-        Debug.Log("Нет свободных слотов в инвентаре");
-        return false;
-    }
-
-    void OnEnable()
-    {
-        if (vrInventoryToggleAction != null && vrInventoryToggleAction.action != null)
-        {
-            vrInventoryToggleAction.action.performed += OnVrInventoryTogglePerformed;
-            vrInventoryToggleAction.action.Enable();
-        }
-    }
-
-    void OnDisable()
-    {
-        if (vrInventoryToggleAction != null && vrInventoryToggleAction.action != null)
-        {
-            vrInventoryToggleAction.action.performed -= OnVrInventoryTogglePerformed;
-            vrInventoryToggleAction.action.Disable();
-        }
     }
 
     void Update()
@@ -177,19 +172,6 @@ public class InventoryManager : MonoBehaviour
 
         // Тест: синхронизация с контроллером
         SyncWithController();
-    }
-
-    private void OnVrInventoryTogglePerformed(InputAction.CallbackContext ctx)
-    {
-        if (Time.unscaledTime - _lastVrToggleTime < vrToggleDebounce)
-            return;
-
-        // Если панель не назначена — нечего тогглить
-        if (uiPanel == null)
-            return;
-
-        _lastVrToggleTime = Time.unscaledTime;
-        ToggleInventory();
     }
 
     // Синхронизация с контроллером
@@ -209,152 +191,23 @@ public class InventoryManager : MonoBehaviour
             }
         }
     }
-
-    // Переключение инвентаря
+    // Инвентарь всегда открыт: Toggle оставлен для совместимости с вызовами из других скриптов
     public void ToggleInventory()
     {
-        Debug.Log($"=== ToggleInventory CALLED ===");
-        Debug.Log($"Before toggle - isOpened: {isOpened}");
-        Debug.Log($"uiFollowCamera exists: {uiFollowCamera != null}");
-        Debug.Log($"uiPanel exists: {uiPanel != null}");
-        Debug.Log($"uiPanel active self: {(uiPanel != null ? uiPanel.activeSelf.ToString() : "null")}");
-
-        if (uiFollowCamera != null)
-        {
-            Debug.Log($"uiFollowCamera.playerCamera: {uiFollowCamera.playerCamera?.name}");
-        }
-
-        isOpened = !isOpened; // ЭТО САМОЕ ВАЖНОЕ!
-        Debug.Log($"After toggle - isOpened: {isOpened}");
-
-        if (isOpened)
-        {
-            Debug.Log(">>> OPENING INVENTORY <<<");
-
-            if (uiFollowCamera != null)
-            {
-                Debug.Log("Calling uiFollowCamera.Show()");
-                uiFollowCamera.Show();
-            }
-            else
-            {
-                Debug.Log("Calling uiPanel.SetActive(true)");
-                uiPanel.SetActive(true);
-            }
-
-            // Блокируем управление игроком
-            if (playerController != null)
-            {
-                Debug.Log("Disabling player input");
-                playerController.SetInputEnabled(false);
-            }
-
-            // Для отладки на компьютере
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
-        }
-        else
-        {
-            Debug.Log(">>> CLOSING INVENTORY <<<");
-
-            if (uiFollowCamera != null)
-            {
-                Debug.Log("Calling uiFollowCamera.Hide()");
-                uiFollowCamera.Hide();
-            }
-            else
-            {
-                Debug.Log("Calling uiPanel.SetActive(false)");
-                uiPanel.SetActive(false);
-            }
-
-            // Возвращаем управление игроку
-            if (playerController != null)
-            {
-                Debug.Log("Enabling player input");
-                playerController.SetInputEnabled(true);
-            }
-
-            // Для отладки на компьютере
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
-        }
-
-        Debug.Log($"=== ToggleInventory FINISHED, isOpened now: {isOpened} ===\n");
+        isOpened = true;
+        if (uiPanel != null) uiPanel.SetActive(true);
     }
 
-    public void OpenForWashingMachineSelection(WashingMachineWithInventory machine, int slotIndex)
+    void LateUpdate()
     {
-        currentMachine = machine;
-        targetSlot = slotIndex;
-
-        // Открываем инвентарь если закрыт
-        if (!isOpened)
-        {
-            ToggleInventory();
-        }
-
-        // Добавляем информацию о режиме выбора
-        Debug.Log($"Режим выбора предмета для машинки активен. Кликните на предмет для перемещения в машинку");
-
-        // Можно также добавить визуальную индикацию режима
-        // Например, изменить цвет заголовка или добавить подсказку
+        // Подстраховка: если панель кто-то выключил — включаем обратно.
+        if (uiPanel != null && !uiPanel.activeSelf)
+            uiPanel.SetActive(true);
+        isOpened = uiPanel != null && uiPanel.activeSelf;
     }
 
-    public void SelectItemForWashing(GameObject item)
-    {
-        if (currentMachine == null || item == null) return;
 
-        // Ищем первый пустой слот в машинке
-        int emptySlot = -1;
-        for (int i = 0; i < currentMachine.machineSlots.Count; i++)
-        {
-            if (currentMachine.machineSlots[i].isEmpty)
-            {
-                emptySlot = i;
-                break;
-            }
-        }
 
-        if (emptySlot == -1)
-        {
-            Debug.LogWarning("Нет свободных слотов в машинке!");
-            return;
-        }
-
-        // Кладём предмет в слот машинки
-        Item itemComp = item.GetComponent<Item>();
-        if (itemComp == null) return;
-
-        currentMachine.machineSlots[emptySlot].FillSlot(itemComp.item, itemComp.amount);
-
-        // Убираем предмет из инвентаря игрока
-        RemoveItemFromSlot(items.IndexOf(item));
-        item.SetActive(false);
-
-        // Обновляем UI машинки
-        currentMachine.UpdateUI();
-
-        Debug.Log($"Предмет {itemComp.item.ItemName} добавлен в машинку в слот {emptySlot}");
-    }
-
-    public GameObject GetItemFromSlot(int index)
-    {
-        if (index < 0 || index >= items.Count) return null;
-        return items[index];
-    }
-
-    public bool RemoveItemFromSlot(int index)
-    {
-        if (index < 0 || index >= items.Count) return false;
-        items[index].SetActive(false);
-        items.RemoveAt(index);
-        return true;
-    }
-
-    public int FindEmptySlot() => items.Count; // упрощено
-
-    public void ReturnItemToSlot(GameObject item, int slot) => items.Add(item);
 
     // Добавить предмет из мира в инвентарь
     public void AddItem(ItemScriptableObject _item, int amount)
@@ -364,12 +217,12 @@ public class InventoryManager : MonoBehaviour
             Debug.LogError("Попытка добавить null предмет!");
             return;
         }
-
         Debug.Log($"Пытаюсь добавить предмет: {_item.ItemName} x{amount}");
 
         // Ищем пустой слот
         foreach (slot slot in slots)
         {
+
             if (slot.isEmpty)
             {
                 slot.FillSlot(_item, amount);
@@ -408,7 +261,9 @@ public class InventoryManager : MonoBehaviour
         Debug.Log($"Взял предмет из слота: {heldItem.ItemName}");
     }
 
+
     // Положить предмет из руки в слот
+    // В классе InventoryManager
     public void PlaceItemToSlot(slot toSlot)
     {
         Debug.Log($"PlaceItemToSlot вызван для слота: {toSlot.gameObject.name}");
@@ -498,6 +353,7 @@ public class InventoryManager : MonoBehaviour
         ClearHand();
     }
 
+
     // Получить предмет из руки
     public ItemScriptableObject GetHeldItem()
     {
@@ -506,14 +362,16 @@ public class InventoryManager : MonoBehaviour
 
     // Получить количество предметов в руке
     public int GetHeldItemAmount()
-    {
+        {
         return heldItemAmount;
     }
 
     // Проверка режима выбора
     public bool IsInWashingMachineSelectionMode()
     {
-        return currentMachine != null;
+        {
+            return currentMachine != null;
+        }
     }
 
     // Метод для выбора предмета для машинки
@@ -574,15 +432,9 @@ public class InventoryManager : MonoBehaviour
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
     }
-    public void SetHeldItemWithVisual(ItemScriptableObject item, int amount)
-{
-    heldItem = item;
-    heldItemAmount = amount;
-    if (playerController != null)
-        playerController.GrabItemFromInventory(item, amount);
-}
 
-    // Синхронизировать предмет в руке
+
+    // Синхронизировать предмет в рукем
     public void SyncHeldItem(ItemScriptableObject item, int amount)
     {
         heldItem = item;

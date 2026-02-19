@@ -50,6 +50,11 @@ public class UnifiedRay : MonoBehaviour
 
     void Update()
     {
+        if (lineRenderer == null) return;
+
+        if (lineRenderer.positionCount < 2)
+            lineRenderer.positionCount = 2;
+
         if (!showLine)
         {
             if (lineRenderer.enabled)
@@ -108,10 +113,14 @@ public class UnifiedRay : MonoBehaviour
     {
         if (lineRenderer == null) return;
 
+        if (lineRenderer.positionCount < 2)
+            lineRenderer.positionCount = 2;
+
         lineRenderer.SetPosition(0, from);
         lineRenderer.SetPosition(1, to);
         lineRenderer.material.color = color;
     }
+
 
     public bool Raycast(out RaycastHit hit, out Ray rayOut)
     {

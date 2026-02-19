@@ -85,57 +85,7 @@ public class slot : MonoBehaviour, IPointerClickHandler
         }
     }
 
-    void PlaceItemFromHand()
-    {
-        if (!isEmpty) return;
-        if (!playerController.HasItemInHand()) return;
 
-        GameObject heldObject = playerController.GetHeldItem();
-        if (heldObject == null) return;
-
-        Item itemComponent = heldObject.GetComponent<Item>();
-        if (itemComponent == null)
-        {
-            Debug.LogError("В руке объект без Item компонента!");
-            return;
-        }
-
-        FillSlot(itemComponent.item, itemComponent.amount);
-        playerController.HideHeldObject();
-        playerController.ClearHeldItem();
-    }
-
-    void TakeItemToHand()
-    {
-        if (isEmpty) return;
-        if (playerController == null) return;
-
-        ItemScriptableObject takenItem = item;
-        int takenAmount = amount;
-
-        if (takenItem.HandPrefab == null)
-        {
-            Debug.LogError($"❌ У предмета {takenItem.ItemName} не назначен HandPrefab");
-            return;
-        }
-
-        // Создаем объект в руке
-        GameObject itemInHand = Instantiate(takenItem.HandPrefab);
-        Item itemComponent = itemInHand.GetComponent<Item>();
-        if (itemComponent == null)
-            itemComponent = itemInHand.AddComponent<Item>();
-
-        itemComponent.item = takenItem;
-        itemComponent.amount = takenAmount;
-
-        // Передаем в руку
-        playerController.GrabItemToHand(itemInHand);
-
-        // Очищаем слот
-        ClearSlot();
-
-        Debug.Log($"✅ Взял предмет из слота в руку: {takenItem.ItemName}");
-    }
 
 public void FillSlot(ItemScriptableObject newItem, int newAmount)
 {
@@ -153,12 +103,4 @@ public void FillSlot(ItemScriptableObject newItem, int newAmount)
         isEmpty = true;
         UpdateVisual();
     }
-
-    // УДАЛИТЕ метод OnClick() - он больше не нужен!
-    /*
-    public void OnClick()
-    {
-        // ... старый код ...
-    }
-    */
 }
