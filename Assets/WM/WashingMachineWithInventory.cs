@@ -48,7 +48,11 @@ public class WashingMachineWithInventory : WashingMachine
     [Header("Таймер и статус")]
     public TextMeshProUGUI timerText;
     public TextMeshProUGUI statusText;
+
+    [Header("World Timer Settings")]
+    public float finishedMessageTime = 7f;
     public TextMeshProUGUI worldTimerText; // добавьте в секцию [Header("Таймер и статус")]
+
 
     [Header("Выход чистых вещей")]
     public Transform cleanItemsSpawnPoint;
@@ -143,6 +147,11 @@ public class WashingMachineWithInventory : WashingMachine
             progressSlider.value = 0f;
 
         UpdateUI();
+
+        if (worldTimerText != null)
+        {
+            worldTimerText.gameObject.SetActive(false);
+        }
     }
 
     void SetupModeButtons()
@@ -275,12 +284,6 @@ public class WashingMachineWithInventory : WashingMachine
     {
         currentLoad = GetItemsCount();
 
-        for (int i = 0; i < machineSlots.Count; i++)
-        {
-            if (machineSlots[i] != null && machineSlots[i].isEmpty)
-                machineSlots[i].ClearSlot();
-        }
-
         if (capacitySlider != null)
             capacitySlider.value = currentLoad;
 
@@ -325,27 +328,26 @@ public class WashingMachineWithInventory : WashingMachine
                 // не выключаем объект
             }
         }
+
+        if (worldTimerText != null && !isWashing)
+        {
+            if (currentLoad > 0)
+            {
+                worldTimerText.gameObject.SetActive(true);
+                worldTimerText.text = "Готово к стирке";
+                worldTimerText.color = Color.white;
+            }
+            else
+            {
+                worldTimerText.gameObject.SetActive(false);
+            }
+        }
     }
 
     void Update()
     {
         if (isWashing)
             UpdateUI();
-        if (worldTimerText != null)
-        {
-            if (isWashing)
-            {
-                float remaining = Mathf.Max(0f, washingDuration - washingTimer);
-                worldTimerText.text = $"{remaining:F1} сек"; // или любой формат
-                worldTimerText.color = Color.yellow;
-            }
-            else
-            {
-                worldTimerText.text = "Готово";
-                worldTimerText.color = Color.green;
-            }
-        }
-
     }
 
     void RemoveFromMachine(int machineSlotIndex)
@@ -386,10 +388,12 @@ public class WashingMachineWithInventory : WashingMachine
             return;
         }
 
+        // 🔥 СОХРАНЯЕМ ПРЕДМЕТЫ ПЕРЕД StartWashing()
         SaveWashedItems();
+
         washingDuration = GetCurrentWashDuration();
         washingTimer = 0f;
-        StartWashing();
+
 
         if (progressSlider != null)
         {
@@ -408,14 +412,16 @@ public class WashingMachineWithInventory : WashingMachine
     void SaveWashedItems()
     {
         washedItems.Clear();
+
         foreach (var slot in machineSlots)
         {
-            if (!slot.isEmpty && slot.item != null)
+            if (slot.item != null)
             {
                 washedItems.Add((slot.item, Mathf.Max(1, slot.amount)));
             }
         }
-        Debug.Log($"Сохранено {washedItems.Count} вещей для стирки");
+
+        Debug.Log($"🧺 Сохранено предметов для стирки: {washedItems.Count}");
     }
 
     IEnumerator WashingProgress()
@@ -430,7 +436,7 @@ public class WashingMachineWithInventory : WashingMachine
             if (worldTimerText != null)
             {
                 float remaining = Mathf.Max(0f, washingDuration - washingTimer);
-                worldTimerText.text = $"{remaining:F1} сек";
+                worldTimerText.text = $"{Mathf.Ceil(remaining)} сек";
                 worldTimerText.color = Color.yellow;
             }
 
@@ -495,6 +501,22 @@ public class WashingMachineWithInventory : WashingMachine
             statusText.text = "ГОТОВО";
 
         UpdateUI(); // обновит UI, разблокирует кнопки и обновит выделение
+
+        if (worldTimerText != null)
+        {
+            StartCoroutine(ShowFinishedMessage());
+        }
+    }
+
+    IEnumerator ShowFinishedMessage()
+    {
+        worldTimerText.gameObject.SetActive(true);
+        worldTimerText.text = "Вещь постиралась";
+        worldTimerText.color = Color.green;
+
+        yield return new WaitForSeconds(finishedMessageTime);
+
+        worldTimerText.gameObject.SetActive(false);
     }
 
     int GetItemsCount()
