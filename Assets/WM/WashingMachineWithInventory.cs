@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System.Collections;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -12,7 +13,7 @@ public class WashingMachineWithInventory : WashingMachine
 
     [Header("Ссылка на InventoryManager")]
     public InventoryManager playerInventory;
-    public FinalPlayerController player; // может не использоваться теперь
+    public FinalPlayerController player;
 
     [Header("Slots")]
     public List<slot> machineSlots = new List<slot>(4);
@@ -25,12 +26,17 @@ public class WashingMachineWithInventory : WashingMachine
     public Button selectFromInventoryBtn; // кнопка "add"
     public Button startWashButton;
     public Button clearMachineButton;
-    public Button closeButton; // возможно, больше не нужен
+    public Button closeButton;
 
-    [Header("Режимы стирки")]
-    public Toggle coloredToggle;
-    public Toggle delicateToggle;
-    public Toggle quickToggle;
+    [Header("Кнопки режимов стирки (ВМЕСТО Toggle)")]
+    public Button coloredModeButton;
+    public Button delicateModeButton;
+    public Button quickModeButton;
+
+    [Header("Визуальное выделение активного режима")]
+    public Color selectedColor = Color.yellow;      // цвет выделенной кнопки
+    public Color normalColor = Color.white;         // цвет обычной кнопки
+    public Color disabledColor = Color.gray;        // цвет неактивной кнопки
 
     [Header("Информация о режиме")]
     public TextMeshProUGUI modeNameText;
@@ -42,6 +48,7 @@ public class WashingMachineWithInventory : WashingMachine
     [Header("Таймер и статус")]
     public TextMeshProUGUI timerText;
     public TextMeshProUGUI statusText;
+    public TextMeshProUGUI worldTimerText; // добавьте в секцию [Header("Таймер и статус")]
 
     [Header("Выход чистых вещей")]
     public Transform cleanItemsSpawnPoint;
@@ -50,6 +57,11 @@ public class WashingMachineWithInventory : WashingMachine
     private float washingTimer = 0f;
     private float washingDuration = 0f;
     private readonly List<(ItemScriptableObject item, int amount)> washedItems = new List<(ItemScriptableObject item, int amount)>();
+
+    // Словарь для хранения исходных цветов кнопок (если нужно восстановить)
+    private Dictionary<Button, Color> originalButtonColors = new Dictionary<Button, Color>();
+
+    
 
     void Start()
     {
@@ -109,9 +121,12 @@ public class WashingMachineWithInventory : WashingMachine
             clearMachineButton.onClick.AddListener(ClearAllSlots);
 
         if (closeButton != null)
-            closeButton.onClick.AddListener(CloseUI); // можно удалить, если кнопка не нужна
+            closeButton.onClick.AddListener(CloseUI);
 
-        SetupWashModeToggles();
+        // Настройка кнопок режимов
+        SetupModeButtons();
+
+        // Устанавливаем режим по умолчанию и выделяем соответствующую кнопку
         SetMode(WashMode.Colored);
 
         // UI всегда активен
@@ -130,87 +145,113 @@ public class WashingMachineWithInventory : WashingMachine
         UpdateUI();
     }
 
-    void SetupWashModeToggles()
+    void SetupModeButtons()
     {
-        if (coloredToggle != null)
-            coloredToggle.onValueChanged.AddListener(isOn => { if (isOn) SetMode(WashMode.Colored); });
+        // Сохраняем исходные цвета кнопок (если нужно, но мы будем менять напрямую)
+        if (coloredModeButton != null)
+        {
+            coloredModeButton.onClick.RemoveAllListeners();
+            coloredModeButton.onClick.AddListener(() => { if (!isWashing) SetMode(WashMode.Colored); });
+            originalButtonColors[coloredModeButton] = coloredModeButton.GetComponent<Image>()?.color ?? normalColor;
+        }
 
-        if (delicateToggle != null)
-            delicateToggle.onValueChanged.AddListener(isOn => { if (isOn) SetMode(WashMode.Delicate); });
+        if (delicateModeButton != null)
+        {
+            delicateModeButton.onClick.RemoveAllListeners();
+            delicateModeButton.onClick.AddListener(() => { if (!isWashing) SetMode(WashMode.Delicate); });
+            originalButtonColors[delicateModeButton] = delicateModeButton.GetComponent<Image>()?.color ?? normalColor;
+        }
 
-        if (quickToggle != null)
-            quickToggle.onValueChanged.AddListener(isOn => { if (isOn) SetMode(WashMode.Quick); });
+        if (quickModeButton != null)
+        {
+            quickModeButton.onClick.RemoveAllListeners();
+            quickModeButton.onClick.AddListener(() => { if (!isWashing) SetMode(WashMode.Quick); });
+            originalButtonColors[quickModeButton] = quickModeButton.GetComponent<Image>()?.color ?? normalColor;
+        }
+    }
 
-        if (coloredToggle != null)
-            coloredToggle.isOn = true;
+    /// <summary>
+    /// Визуально выделяет кнопку выбранного режима и сбрасывает остальные
+    /// </summary>
+    void HighlightModeButton(WashMode mode)
+    {
+        // Сбрасываем все кнопки в обычный цвет (или в цвет неактивности, если стирка идёт)
+        Color targetNormal = isWashing ? disabledColor : normalColor;
+        SetButtonColor(coloredModeButton, targetNormal);
+        SetButtonColor(delicateModeButton, targetNormal);
+        SetButtonColor(quickModeButton, targetNormal);
+
+        // Выделяем нужную кнопку (даже во время стирки, чтобы показать выбранный режим)
+        Button selected = null;
+        switch (mode)
+        {
+            case WashMode.Colored: selected = coloredModeButton; break;
+            case WashMode.Delicate: selected = delicateModeButton; break;
+            case WashMode.Quick: selected = quickModeButton; break;
+        }
+        if (selected != null)
+        {
+            SetButtonColor(selected, selectedColor);
+        }
+    }
+
+    void SetButtonColor(Button btn, Color color)
+    {
+        if (btn != null)
+        {
+            Image img = btn.GetComponent<Image>();
+            if (img != null) img.color = color;
+        }
     }
 
     public new void SetMode(WashMode mode)
     {
-        base.SetMode(mode);
+        if (isWashing)
+        {
+            Debug.LogWarning("Нельзя менять режим во время стирки!");
+            return;
+        }
+
+        base.SetMode(mode); // обновляет currentMode
+        HighlightModeButton(currentMode);
         UpdateModeDisplay();
     }
 
-    /// <summary>
-    /// Автоматически переносит предметы из инвентаря игрока в свободные слоты машины.
-    /// </summary>
     public void AddItemsFromPlayerInventoryAutomatically()
     {
+        Debug.Log("🟢 AddItemsFromPlayerInventoryAutomatically вызван");
         if (playerInventory == null)
         {
-            Debug.LogError("❌ InventoryManager не назначен!");
+            Debug.LogError("InventoryManager не назначен!");
             return;
         }
 
         if (isWashing)
         {
-            Debug.LogWarning("⚠️ Нельзя добавлять предметы во время стирки!");
+            Debug.LogWarning("Нельзя добавлять предметы во время стирки!");
             return;
-        }
-
-        // Отладка: состояние инвентаря
-        Debug.Log($"📦 Инвентарь игрока: {playerInventory.slots.Count} слотов.");
-        for (int i = 0; i < playerInventory.slots.Count; i++)
-        {
-            slot s = playerInventory.slots[i];
-            Debug.Log($"   Слот {i}: isEmpty={s.isEmpty}, item={(s.item != null ? s.item.name : "null")}");
-        }
-
-        // Отладка: состояние слотов машины
-        Debug.Log($"🧺 Машина: {machineSlots.Count} слотов.");
-        for (int i = 0; i < machineSlots.Count; i++)
-        {
-            slot s = machineSlots[i];
-            Debug.Log($"   Слот {i}: isEmpty={s.isEmpty}, item={(s.item != null ? s.item.name : "null")}");
         }
 
         int movedCount = 0;
         for (int p = playerInventory.slots.Count - 1; p >= 0; p--)
         {
             slot playerSlot = playerInventory.slots[p];
-            if (playerSlot == null || playerSlot.isEmpty || playerSlot.item == null)
-            {
-                Debug.Log($"   Пропускаем слот игрока {p}: пустой или null");
-                continue;
-            }
+            if (playerSlot == null || playerSlot.isEmpty || playerSlot.item == null) continue;
 
             int machineIndex = FindFirstEmptyMachineSlotIndex();
-            if (machineIndex == -1)
-            {
-                Debug.Log("   Нет свободных слотов в машине, прерываем цикл.");
-                break;
-            }
+            if (machineIndex == -1) break;
 
-            Debug.Log($"   Переносим предмет '{playerSlot.item.name}' из слота {p} в слот машины {machineIndex}");
-            machineSlots[machineIndex].FillSlot(playerSlot.item, playerSlot.amount);
+            ItemScriptableObject itemToMove = playerSlot.item;
+            int amountToMove = playerSlot.amount;
+            machineSlots[machineIndex].FillSlot(itemToMove, amountToMove);
             playerSlot.ClearSlot();
             movedCount++;
         }
 
         if (movedCount == 0)
-            Debug.Log("❌ Нет предметов для переноса (или машинка заполнена).");
+            Debug.Log("Нет предметов для переноса (или машинка заполнена).");
         else
-            Debug.Log($"✅ Перенесено предметов в стиральную машину: {movedCount}");
+            Debug.Log($"Перенесено предметов в стиральную машину: {movedCount}");
 
         UpdateUI();
     }
@@ -225,9 +266,8 @@ public class WashingMachineWithInventory : WashingMachine
         return -1;
     }
 
-    // Методы открытия/закрытия UI больше не нужны, но можно оставить для совместимости
     public void OpenMachineUI() { /* UI всегда открыт */ }
-    public void CloseUI() { /* UI всегда открыт, можно ничего не делать или скрыть, если нужно */ }
+    public void CloseUI() { /* UI всегда открыт */ }
 
     public bool IsUIOpen() => machineCanvas != null && machineCanvas.gameObject.activeSelf;
 
@@ -245,9 +285,12 @@ public class WashingMachineWithInventory : WashingMachine
             capacitySlider.value = currentLoad;
 
         bool full = currentLoad >= 4;
-
+        bool addBtnShouldBeActive = !full && !isWashing;
         if (selectFromInventoryBtn != null)
-            selectFromInventoryBtn.interactable = !full && !isWashing;
+        {
+            selectFromInventoryBtn.interactable = addBtnShouldBeActive;
+            Debug.Log($"Add button interactable: {selectFromInventoryBtn.interactable}, full={full}, isWashing={isWashing}");
+        }
 
         if (startWashButton != null)
             startWashButton.interactable = currentLoad > 0 && !isWashing;
@@ -255,54 +298,54 @@ public class WashingMachineWithInventory : WashingMachine
         if (clearMachineButton != null)
             clearMachineButton.interactable = currentLoad > 0 && !isWashing;
 
+        // Блокировка кнопок режимов во время стирки (но они остаются выделенными)
+        bool modeButtonsInteractable = !isWashing;
+        if (coloredModeButton != null) coloredModeButton.interactable = modeButtonsInteractable;
+        if (delicateModeButton != null) delicateModeButton.interactable = modeButtonsInteractable;
+        if (quickModeButton != null) quickModeButton.interactable = modeButtonsInteractable;
+
+        // Обновляем выделение в соответствии с текущим режимом и состоянием isWashing
+        HighlightModeButton(currentMode);
+
         UpdateModeDisplay();
 
-        if (timerText != null)
+        if (worldTimerText != null)
         {
             if (isWashing)
             {
                 float remaining = Mathf.Max(0f, washingDuration - washingTimer);
-                timerText.text = $"Осталось: {remaining:F1} сек.";
-                timerText.color = Color.yellow;
+                worldTimerText.text = $"{remaining:F1} сек";
+                worldTimerText.color = Color.yellow;
+                worldTimerText.gameObject.SetActive(true);
             }
             else
             {
-                timerText.text = "Готово к стирке";
-                timerText.color = Color.green;
+                worldTimerText.text = "Готово";
+                worldTimerText.color = Color.green;
+                // не выключаем объект
             }
-        }
-
-        if (statusText != null)
-        {
-            if (isWashing)
-            {
-                statusText.text = "СТИРКА...";
-                statusText.color = Color.yellow;
-            }
-            else if (currentLoad > 0)
-            {
-                statusText.text = "ГОТОВО К СТИРКЕ";
-                statusText.color = Color.green;
-            }
-            else
-            {
-                statusText.text = "ПУСТО";
-                statusText.color = Color.gray;
-            }
-        }
-
-        if (!isWashing && durationText != null)
-        {
-            float duration = GetCurrentWashDuration();
-            durationText.text = $"Длительность: {duration} сек.";
         }
     }
 
     void Update()
     {
-        // Убрано закрытие по Escape, так как UI всегда открыт
         if (isWashing)
             UpdateUI();
+        if (worldTimerText != null)
+        {
+            if (isWashing)
+            {
+                float remaining = Mathf.Max(0f, washingDuration - washingTimer);
+                worldTimerText.text = $"{remaining:F1} сек"; // или любой формат
+                worldTimerText.color = Color.yellow;
+            }
+            else
+            {
+                worldTimerText.text = "Готово";
+                worldTimerText.color = Color.green;
+            }
+        }
+
     }
 
     void RemoveFromMachine(int machineSlotIndex)
@@ -375,7 +418,7 @@ public class WashingMachineWithInventory : WashingMachine
         Debug.Log($"Сохранено {washedItems.Count} вещей для стирки");
     }
 
-    System.Collections.IEnumerator WashingProgress()
+    IEnumerator WashingProgress()
     {
         while (washingTimer < washingDuration)
         {
@@ -384,11 +427,11 @@ public class WashingMachineWithInventory : WashingMachine
             if (progressSlider != null && washingDuration > 0f)
                 progressSlider.value = Mathf.Clamp01(washingTimer / washingDuration);
 
-            if (timerText != null)
+            if (worldTimerText != null)
             {
                 float remaining = Mathf.Max(0f, washingDuration - washingTimer);
-                timerText.text = $"Осталось: {remaining:F1} сек.";
-                timerText.color = Color.yellow;
+                worldTimerText.text = $"{remaining:F1} сек";
+                worldTimerText.color = Color.yellow;
             }
 
             yield return null;
@@ -451,7 +494,7 @@ public class WashingMachineWithInventory : WashingMachine
         if (statusText != null)
             statusText.text = "ГОТОВО";
 
-        UpdateUI();
+        UpdateUI(); // обновит UI, разблокирует кнопки и обновит выделение
     }
 
     int GetItemsCount()
