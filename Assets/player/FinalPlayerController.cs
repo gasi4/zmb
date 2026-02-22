@@ -1,7 +1,7 @@
 ﻿using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.XR.Interaction.Toolkit;
+
 
 public class FinalPlayerController : MonoBehaviour
 {
@@ -21,15 +21,16 @@ public class FinalPlayerController : MonoBehaviour
     public ActionBasedController leftController;
 
     [Header("VR Input Actions (Action-based XRI)")]
-    [Tooltip("Экшен для правого стика (Vector2). В XRI обычно: XRI RightHand/Turn или похожий.")]
     public InputActionProperty rightStick;
-
-    [Tooltip("Если задан — используется для взгляда вместо rightStick.")]
     public InputActionProperty lookAction;
 
     [Header("VR Grab Mode")]
-    [Tooltip("Кнопка (например клик правого стика). Если нажата при захвате — предмет добавляется в инвентарь, иначе берётся физически в руку.")]
     public InputActionProperty storeToInventoryModifier;
+
+    [Header("VR Delivery (Right Grip)")]
+    public InputActionProperty rightGripAction;
+    public float vrDeliveryDebounce = 0.25f;
+    private float _nextAllowedVrDeliveryTime;
 
     [Header("Editor Movement Settings")]
     public float mouseSensitivity = 2f;
@@ -44,13 +45,13 @@ public class FinalPlayerController : MonoBehaviour
     public float holdSmoothness = 15f;
 
     [Header("VR Look (Right Stick)")]
-    public float lookSensitivity = 90f; // градусов/сек при значении стика = 1
+    public float lookSensitivity = 90f;
     public float maxPitch = 80f;
 
     [Header("Inventory")]
     public InventoryManager inventoryManager;
     public KeyCode inventoryToggleKey = KeyCode.Tab;
-    public KeyCode pickupKey = KeyCode.E; // Кнопка для подбора предметов
+    public KeyCode pickupKey = KeyCode.E;
 
     private GameObject heldObject = null;
     private Rigidbody heldRigidbody = null;
@@ -58,7 +59,7 @@ public class FinalPlayerController : MonoBehaviour
     private float yaw = 0f;
 
     [Header("VR Inventory Toggle (Action-based)")]
-    public InputActionProperty vrInventoryToggleAction; // кнопка на левом контроллере
+    public InputActionProperty vrInventoryToggleAction;
     public float vrToggleDebounce = 0.25f;
     private float _nextAllowedVrToggleTime;
 
@@ -69,7 +70,7 @@ public class FinalPlayerController : MonoBehaviour
     private bool inputEnabled = true;
 
     [Header("Delivery Point")]
-    public KeyCode placeOnDeliveryKey = KeyCode.E; // Кнопка для класть на точку
+    public KeyCode placeOnDeliveryKey = KeyCode.E;
     public float deliveryInteractionRange = 10f;
 
     void Start()
@@ -134,7 +135,6 @@ public class FinalPlayerController : MonoBehaviour
             HandleEditorMode();
         }
 
-        // Editor fallback
         if (Input.GetKeyDown(inventoryToggleKey))
             inventoryManager?.ToggleInventory();
 
@@ -150,12 +150,49 @@ public class FinalPlayerController : MonoBehaviour
         HandleVRLook();
         HandleGrabVR();
         HandleVRInventoryToggle();
+        HandleVRDelivery();
 
         if (unifiedRay != null && rightHandTransform != null)
         {
             unifiedRay.vrModeActive = true;
             unifiedRay.rightHandTransform = rightHandTransform;
         }
+    }
+
+    void HandleVRDelivery()
+    {
+        if (!vrModeActive) return;
+        if (Time.time < _nextAllowedVrDeliveryTime) return;
+        if (rightGripAction.action == null || !rightGripAction.action.enabled) return;
+
+        bool pressed = rightGripAction.action.ReadValue<float>() > 0.5f;
+        if (!pressed) return;
+
+        DeliveryPoint dp = FindDeliveryPointPlayerIsInside();
+        if (dp == null) return;
+
+        // Если есть что положить (предмет в руке или в инвентаре) – пытаемся разместить
+        if (heldObject != null || heldInventoryItem != null)
+        {
+            TryPlaceOnDeliveryPoint();
+        }
+
+        _nextAllowedVrDeliveryTime = Time.time + vrDeliveryDebounce;
+    }
+
+    DeliveryPoint FindDeliveryPointPlayerIsInside()
+    {
+        DeliveryPoint[] points = FindObjectsOfType<DeliveryPoint>();
+        if (points == null) return null;
+
+        for (int i = 0; i < points.Length; i++)
+        {
+            DeliveryPoint p = points[i];
+            if (p == null) continue;
+            if (p.IsPlayerInInteractionZone(transform))
+                return p;
+        }
+        return null;
     }
 
     void HandleEditorMode()
@@ -211,13 +248,9 @@ public class FinalPlayerController : MonoBehaviour
 
     void TryPlaceOnDeliveryPoint()
     {
-        if (heldObject == null)
-        {
-            Debug.Log("В руке нет вещи для класть на точку!");
-            return;
-        }
-
-        // Ищем подходящий DeliveryPoint
+        // Поиск DeliveryPoint
+        DeliveryPoint deliveryPoint = null;
+        bool selectedByZone = false;
         DeliveryPoint[] points = FindObjectsOfType<DeliveryPoint>();
         if (points == null || points.Length == 0)
         {
@@ -225,10 +258,7 @@ public class FinalPlayerController : MonoBehaviour
             return;
         }
 
-        DeliveryPoint deliveryPoint = null;
-        bool selectedByZone = false;
-
-        // 1) Приоритет: стоим в зоне перед полкой
+        // Приоритет: зона, в которой стоит игрок
         for (int i = 0; i < points.Length; i++)
         {
             if (points[i] != null && points[i].IsPlayerInInteractionZone(transform))
@@ -239,18 +269,18 @@ public class FinalPlayerController : MonoBehaviour
             }
         }
 
-        // 2) Fallback: ближайший по дистанции
+        // Fallback: ближайший
         if (deliveryPoint == null)
         {
             float bestDist = float.MaxValue;
-            for (int i = 0; i < points.Length; i++)
+            foreach (var p in points)
             {
-                if (points[i] == null) continue;
-                float d = Vector3.Distance(transform.position, points[i].transform.position);
+                if (p == null) continue;
+                float d = Vector3.Distance(transform.position, p.transform.position);
                 if (d < bestDist)
                 {
                     bestDist = d;
-                    deliveryPoint = points[i];
+                    deliveryPoint = p;
                 }
             }
         }
@@ -261,7 +291,7 @@ public class FinalPlayerController : MonoBehaviour
             return;
         }
 
-        // Проверка дистанции
+        // Проверка дистанции (если не в зоне)
         if (!selectedByZone)
         {
             float distance = Vector3.Distance(transform.position, deliveryPoint.transform.position);
@@ -272,59 +302,119 @@ public class FinalPlayerController : MonoBehaviour
             }
         }
 
-        // Проверяем что это предмет
-        Item itemComponent = heldObject.GetComponent<Item>();
-        if (itemComponent == null)
+        // --- Определяем, что будем класть ---
+        GameObject objectToPlace = heldObject;
+        Item itemComponent = objectToPlace != null ? objectToPlace.GetComponent<Item>() : null;
+        slot sourceSlot = null; // слот инвентаря, из которого взят предмет (если применимо)
+
+        // Случай 1: В руке физический объект с Item (из мира или из инвентаря, но уже созданный)
+        if (objectToPlace != null && itemComponent != null && itemComponent.item != null)
         {
-            if (heldInventoryItem != null && heldInventoryItem.WorldPrefab != null)
+            // Это готовый объект, ничего не делаем
+        }
+        // Случай 2: В руке визуальный предмет из инвентаря (heldInventoryItem)
+        else if (objectToPlace == null && heldInventoryItem != null)
+        {
+            if (heldInventoryItem.WorldPrefab == null)
             {
-                // Меняем "визуал в руке" на реальный объект мира с компонентом Item
-                GameObject worldItem = Instantiate(heldInventoryItem.WorldPrefab);
-                worldItem.transform.position = heldObject.transform.position;
-                worldItem.transform.rotation = heldObject.transform.rotation;
-
-                itemComponent = worldItem.GetComponent<Item>();
-                if (itemComponent == null) itemComponent = worldItem.AddComponent<Item>();
-
-                itemComponent.item = heldInventoryItem;
-                itemComponent.amount = 1;
-
-                // Заменяем heldObject на созданный предмет
-                Destroy(heldObject);
-                heldObject = worldItem;
+                Debug.LogError($"Предмет {heldInventoryItem.ItemName} не имеет WorldPrefab!");
+                return;
             }
-            else
+            // Ищем слот в инвентаре с таким же предметом
+            if (inventoryManager != null && inventoryManager.slots != null)
             {
-                Debug.Log("У объекта нет компонента Item и нет WorldPrefab у предмета из инвентаря!");
+                foreach (var slot in inventoryManager.slots)
+                {
+                    if (slot != null && !slot.isEmpty && slot.item == heldInventoryItem)
+                    {
+                        sourceSlot = slot;
+                        break;
+                    }
+                }
+            }
+            // Создаём временный объект в мире
+            GameObject worldItem = Instantiate(heldInventoryItem.WorldPrefab);
+            worldItem.transform.position = transform.position + transform.forward * 0.5f;
+            worldItem.transform.rotation = Quaternion.identity;
+
+            itemComponent = worldItem.GetComponent<Item>();
+            if (itemComponent == null) itemComponent = worldItem.AddComponent<Item>();
+            itemComponent.item = heldInventoryItem;
+            itemComponent.amount = 1;
+
+            objectToPlace = worldItem;
+        }
+        // Случай 3: В руке ничего нет – пробуем взять первый предмет из инвентаря
+        else if (objectToPlace == null && inventoryManager != null && inventoryManager.slots != null)
+        {
+            foreach (var slot in inventoryManager.slots)
+            {
+                if (slot != null && !slot.isEmpty && slot.item != null && slot.item.WorldPrefab != null)
+                {
+                    GameObject worldItem = Instantiate(slot.item.WorldPrefab);
+                    worldItem.transform.position = transform.position + transform.forward * 0.5f;
+                    worldItem.transform.rotation = Quaternion.identity;
+
+                    itemComponent = worldItem.GetComponent<Item>();
+                    if (itemComponent == null) itemComponent = worldItem.AddComponent<Item>();
+                    itemComponent.item = slot.item;
+                    itemComponent.amount = slot.amount;
+
+                    objectToPlace = worldItem;
+                    sourceSlot = slot;
+                    break;
+                }
+            }
+            if (objectToPlace == null)
+            {
+                Debug.Log("В инвентаре нет предметов для размещения!");
                 return;
             }
         }
+        else
+        {
+            Debug.Log("Нечего класть на точку!");
+            return;
+        }
 
-        // Ищем ближайшего зомби, который ждет вещь
+        // Ищем зомби, который ждёт вещь
         ZombieCustomer nearestZombie = FindNearestWaitingZombie();
         if (nearestZombie == null)
         {
             Debug.Log("Нет зомби, ожидающих вещь!");
+            if (objectToPlace != heldObject) Destroy(objectToPlace);
             return;
         }
 
         // Пытаемся положить вещь на точку
-        if (deliveryPoint.PlaceItem(heldObject, nearestZombie))
+        if (deliveryPoint.PlaceItem(objectToPlace, nearestZombie))
         {
-            Debug.Log($"✅ Вещь {heldObject.name} положена на Delivery Point для зомби {nearestZombie.name}");
+            Debug.Log($"✅ Вещь {objectToPlace.name} положена на Delivery Point для зомби {nearestZombie.name}");
 
-            // Очищаем руку
+            // Если предмет был взят из инвентаря – очищаем соответствующий слот
+            if (sourceSlot != null)
+            {
+                sourceSlot.ClearSlot();
+            }
+            // Если предмет был в heldInventoryItem, дополнительно сбрасываем его
+            if (heldInventoryItem != null)
+            {
+                heldInventoryItem = null;
+            }
+
+            // Очищаем руку игрока
             ClearHeldItem();
         }
         else
         {
             Debug.Log("Не удалось положить вещь на Delivery Point!");
+            if (objectToPlace != heldObject) Destroy(objectToPlace);
         }
     }
 
     ZombieCustomer FindNearestWaitingZombie()
     {
-        // 1) Приоритет: зомби на первом месте очереди
+        // Приоритет: зомби на первом месте очереди
         CustomerQueueManager queue = FindObjectOfType<CustomerQueueManager>();
         if (queue != null)
         {
@@ -336,7 +426,7 @@ public class FinalPlayerController : MonoBehaviour
             }
         }
 
-        // 2) Fallback: ближайший зомби в состоянии Waiting
+        // Fallback: ближайший зомби в состоянии Waiting / GettingAngry / Angry
         ZombieCustomer[] allZombies = FindObjectsOfType<ZombieCustomer>();
         ZombieCustomer nearestZombie = null;
         float minDistance = float.MaxValue;
@@ -365,8 +455,6 @@ public class FinalPlayerController : MonoBehaviour
 
         return nearestZombie;
     }
-
-    
 
     #region Editor Mode Controls
     void HandleEditorCamera()
@@ -416,29 +504,7 @@ public class FinalPlayerController : MonoBehaviour
         }
     }
 
-    void HandleObjectInteraction(GameObject obj)
-    {
-        if (obj == null) return;
-        // Игнорируем стиральные машины
-        if (obj.GetComponentInParent<WashingMachineWithInventory>() != null) return;
-        if (obj.GetComponentInParent<WashingMachineUI>() != null) return;
-
-        Item itemComponent = obj.GetComponent<Item>();
-        bool isInventoryItem = (itemComponent != null && itemComponent.item != null);
-
-        if (isInventoryItem)
-        {
-            // Добавляем в инвентарь и уничтожаем объект мира
-            inventoryManager?.AddItem(itemComponent.item, itemComponent.amount);
-            Destroy(obj);
-            Debug.Log($"✅ {itemComponent.item.ItemName} добавлен в инвентарь");
-        }
-        else
-        {
-            // Захватываем как физический объект (без добавления в инвентарь)
-            GrabPhysicalObject(obj);
-        }
-    }
+    
 
     void TryGrab()
     {
@@ -486,13 +552,11 @@ public class FinalPlayerController : MonoBehaviour
             return;
         }
 
-        // Если уже что-то в руке - убираем
         if (heldObject != null)
         {
             HideHeldObject();
         }
 
-        // Создаем визуал предмета в руке
         Transform targetHand = vrModeActive ? rightHandTransform : handForEmulation;
         if (targetHand == null) return;
 
@@ -502,11 +566,9 @@ public class FinalPlayerController : MonoBehaviour
         heldObject.transform.localRotation = Quaternion.identity;
         heldObject.transform.localScale = Vector3.one;
 
-        // Убираем физику
         DestroyIfExists<Rigidbody>(heldObject);
         DestroyIfExists<Collider>(heldObject);
 
-        // Сохраняем ссылку на предмет инвентаря
         heldInventoryItem = item;
 
         Debug.Log($"✅ {item.ItemName} визуально экипирован в руку");
@@ -534,11 +596,9 @@ public class FinalPlayerController : MonoBehaviour
             return;
         }
 
-        // Создаём anchor
         GameObject anchor = new GameObject("HandAnchor");
         anchor.transform.SetParent(targetHand);
 
-        // Вычисляем компенсированный масштаб
         Vector3 parentScale = targetHand.lossyScale;
         Vector3 inverseScale = new Vector3(
             1f / parentScale.x,
@@ -547,21 +607,16 @@ public class FinalPlayerController : MonoBehaviour
         );
 
         anchor.transform.localScale = inverseScale;
-
-        // Смещение вперед относительно руки
         anchor.transform.localPosition = new Vector3(0f, -0.1f, 0.2f);
         anchor.transform.localRotation = Quaternion.identity;
 
-        // Сохраняем оригинальный масштаб предмета
         Vector3 originalScale = heldObject.transform.localScale;
 
-        // Вставляем предмет в anchor
         heldObject.transform.SetParent(anchor.transform);
         heldObject.transform.localPosition = Vector3.zero;
         heldObject.transform.localRotation = Quaternion.identity;
         heldObject.transform.localScale = originalScale;
 
-        // Отключаем Rigidbody/Collider
         DestroyIfExists<Rigidbody>(heldObject);
         DestroyIfExists<Collider>(heldObject);
 
@@ -576,7 +631,6 @@ public class FinalPlayerController : MonoBehaviour
 
         heldObject.SetActive(false);
         heldObject.transform.SetParent(null);
-
         heldRigidbody = null;
     }
 
@@ -621,30 +675,81 @@ public class FinalPlayerController : MonoBehaviour
     {
         if (heldObject == null) return;
 
-        Debug.Log($"Бросаю: {heldObject.name}");
+        // Проверяем, находимся ли в зоне доставки
+        if (TryGetDeliveryPointInZone(out DeliveryPoint dp))
+        {
+            // Есть ли зомби, который ждёт?
+            ZombieCustomer zombie = FindTargetZombie();
+            if (zombie != null)
+            {
+                // Пытаемся положить предмет на точку
+                if (TryPlaceOnDeliveryPointDirect(heldObject, zombie, dp))
+                {
+                    // Успешно передали – очищаем руку и выходим
+                    ClearHeldItem();
+                    return;
+                }
+            }
+        }
 
-        // Проверяем, предмет из инвентаря или из мира
+        // Иначе – обычное бросание
+        Debug.Log($"Бросаю: {heldObject.name}");
         if (inventoryManager != null && inventoryManager.HasItemInHand())
         {
             inventoryManager.DropHeldItem();
         }
         else
         {
-            // Физический объект из мира
             heldObject.transform.SetParent(null);
-
             if (heldRigidbody != null)
             {
                 heldRigidbody.isKinematic = false;
-
                 Vector3 throwDirection = vrModeActive && rightHandTransform != null
                     ? rightHandTransform.forward
                     : (playerCamera != null ? playerCamera.forward : transform.forward);
                 heldRigidbody.velocity = throwDirection * throwForce;
             }
-
             heldObject = null;
             heldRigidbody = null;
+        }
+    }
+    private bool TryPlaceOnDeliveryPointDirect(GameObject obj, ZombieCustomer zombie, DeliveryPoint dp)
+    {
+        if (obj == null || zombie == null || dp == null) return false;
+
+        // Если предмет из инвентаря (heldInventoryItem) – создаём временный WorldPrefab
+        if (heldInventoryItem != null)
+        {
+            if (heldInventoryItem.WorldPrefab == null)
+            {
+                Debug.LogError("Нет WorldPrefab для предмета из инвентаря");
+                return false;
+            }
+            GameObject worldItem = Instantiate(heldInventoryItem.WorldPrefab);
+            worldItem.transform.position = obj.transform.position;
+            worldItem.transform.rotation = obj.transform.rotation;
+            Item itemComp = worldItem.GetComponent<Item>();
+            if (itemComp == null) itemComp = worldItem.AddComponent<Item>();
+            itemComp.item = heldInventoryItem;
+            itemComp.amount = 1; // или нужное количество
+
+            // Пытаемся разместить на точке
+            bool result = dp.PlaceItem(worldItem, zombie);
+            if (result)
+            {
+                // Удаляем визуальный объект из руки
+                Destroy(obj);
+            }
+            else
+            {
+                Destroy(worldItem);
+            }
+            return result;
+        }
+        else
+        {
+            // Обычный физический объект
+            return dp.PlaceItem(obj, zombie);
         }
     }
 
@@ -652,7 +757,6 @@ public class FinalPlayerController : MonoBehaviour
     {
         if (rightController == null || unifiedRay == null) return;
 
-        // Проверяем, что действие назначено и включено
         if (rightController.activateAction == null || !rightController.activateAction.action.enabled)
         {
             Debug.LogError("Activate action not configured!");
@@ -737,5 +841,102 @@ public class FinalPlayerController : MonoBehaviour
         }
 
         return 1;
+    }
+
+    // Добавьте эти вспомогательные методы в класс FinalPlayerController
+
+    // Возвращает DeliveryPoint, в зоне которого находится игрок (или null)
+    private bool TryGetDeliveryPointInZone(out DeliveryPoint result)
+    {
+        result = null;
+        DeliveryPoint[] points = FindObjectsOfType<DeliveryPoint>();
+        if (points == null) return false;
+        foreach (var p in points)
+        {
+            if (p != null && p.IsPlayerInInteractionZone(transform))
+            {
+                result = p;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Возвращает первого зомби в очереди или ближайшего ожидающего
+    private ZombieCustomer FindTargetZombie()
+    {
+        CustomerQueueManager queue = FindObjectOfType<CustomerQueueManager>();
+        if (queue != null)
+        {
+            ZombieCustomer first = queue.GetFirstWaitingZombie();
+            if (first != null) return first;
+        }
+        // Fallback: ближайший Waiting/Angry зомби
+        ZombieCustomer[] all = FindObjectsOfType<ZombieCustomer>();
+        ZombieCustomer nearest = null;
+        float minDist = float.MaxValue;
+        foreach (var z in all)
+        {
+            if (z == null) continue;
+            if (z.currentState == ZombieCustomer.ZombieState.Waiting ||
+                z.currentState == ZombieCustomer.ZombieState.GettingAngry ||
+                z.currentState == ZombieCustomer.ZombieState.Angry)
+            {
+                float d = Vector3.Distance(transform.position, z.transform.position);
+                if (d < minDist)
+                {
+                    minDist = d;
+                    nearest = z;
+                }
+            }
+        }
+        return nearest;
+    }
+
+    // Замените существующий метод HandleObjectInteraction этим
+    void HandleObjectInteraction(GameObject obj)
+    {
+        if (obj == null) return;
+        if (obj.GetComponentInParent<WashingMachineWithInventory>() != null) return;
+        if (obj.GetComponentInParent<WashingMachineUI>() != null) return;
+
+        Item itemComponent = obj.GetComponent<Item>();
+        bool isInventoryItem = (itemComponent != null && itemComponent.item != null);
+
+        if (isInventoryItem)
+        {
+            // Проверяем, находимся ли мы в зоне доставки
+            if (TryGetDeliveryPointInZone(out DeliveryPoint dp))
+            {
+                ZombieCustomer zombie = FindTargetZombie();
+                if (zombie != null)
+                {
+                    // Пытаемся передать предмет напрямую в DeliveryPoint
+                    if (dp.PlaceItem(obj, zombie))
+                    {
+                        Debug.Log($"✅ Предмет {obj.name} передан в DeliveryPoint для зомби {zombie.name}");
+                        // Не уничтожаем obj – DeliveryPoint сама позаботится о нём (переместит, удалит и т.д.)
+                        return;
+                    }
+                    else
+                    {
+                        Debug.LogWarning("Не удалось передать предмет в DeliveryPoint, добавляем в инвентарь");
+                    }
+                }
+                else
+                {
+                    Debug.Log("Нет зомби для получения предмета, добавляем в инвентарь");
+                }
+            }
+
+            // Если не в зоне доставки или передача не удалась – добавляем в инвентарь как обычно
+            inventoryManager?.AddItem(itemComponent.item, itemComponent.amount);
+            Destroy(obj);
+            Debug.Log($"✅ {itemComponent.item.ItemName} добавлен в инвентарь");
+        }
+        else
+        {
+            GrabPhysicalObject(obj);
+        }
     }
 }

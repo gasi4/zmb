@@ -4,10 +4,10 @@ public class DeliveryPoint : MonoBehaviour
 {
     [Header("Настройки точки выдачи")]
     public float pickupRadius = 1.5f;
-    public Transform dropPosition;
+    public Transform dropPosition; // Сюда будет притягиваться предмет
 
     [Header("Зона взаимодействия игрока")]
-    public Collider interactionZone; // триггер/коллайдер зоны перед полкой
+    public Collider interactionZone;
 
     [Header("Визуальные эффекты")]
     public GameObject highlightEffect;
@@ -23,142 +23,178 @@ public class DeliveryPoint : MonoBehaviour
         if (highlightEffect != null)
             highlightEffect.SetActive(false);
 
-        // Если зона не назначена — пробуем взять коллайдер с этого объекта
         if (interactionZone == null)
             interactionZone = GetComponent<Collider>();
 
-        // Важно: для "области" проще всего использовать Trigger
         if (interactionZone != null)
-        {
             interactionZone.isTrigger = true;
-            // Зона нужна только для игрока; для зомби выдачу делаем по pickupRadius (см. Update).
-        }
     }
 
     void Update()
     {
-        // Fallback: если триггер-зона не сработала, все равно отдаем по дистанции
         if (currentItem != null && waitingZombie != null)
         {
             if (waitingZombie.currentState == ZombieCustomer.ZombieState.GoingToDelivery)
             {
                 Transform p = dropPosition != null ? dropPosition : transform;
                 float distance = Vector3.Distance(waitingZombie.transform.position, p.position);
-
                 if (distance <= pickupRadius)
-                {
                     DeliverItemToZombie();
-                }
             }
         }
     }
 
+    // Новый метод: притягивает предмет к точке (без зомби)
+    public void AttractItem(GameObject item)
+    {
+        if (item == null) return;
 
+        Item itemComp = item.GetComponent<Item>();
+        if (itemComp != null && !itemComp.isClean)
+        {
+            Debug.LogWarning("Пытаемся притянуть грязный предмет - не положим на полку");
+            return;
+        }
 
-    // Игрок кладет вещь на точку
+        Transform target = dropPosition != null ? dropPosition : transform;
+        item.transform.SetParent(target);
+        item.transform.localPosition = Vector3.zero;
+        item.transform.localRotation = Quaternion.identity;
+
+        Rigidbody rb = item.GetComponent<Rigidbody>();
+        if (rb != null)
+        {
+            rb.isKinematic = true;
+            rb.velocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+        }
+
+        Collider col = item.GetComponent<Collider>();
+        if (col != null)
+            col.enabled = false;
+
+        if (currentItem != null && currentItem != item)
+            Destroy(currentItem);
+        currentItem = item;
+
+        if (highlightEffect != null)
+            highlightEffect.SetActive(true);
+
+        Debug.Log($"Предмет {item.name} притянут к DeliveryPoint");
+
+        // --- НОВЫЙ КОД: поиск зомби и отправка его к точке ---
+        ZombieCustomer zombie = FindNearestWaitingZombie();
+        if (zombie != null)
+        {
+            waitingZombie = zombie;
+            zombie.GoToDeliveryPoint(this);
+            Debug.Log($"Зомби {zombie.name} отправлен к точке за предметом");
+        }
+        else
+        {
+            Debug.Log("Нет зомби, ожидающих вещь");
+        }
+    }
+
+    // Вспомогательный метод для поиска ближайшего ожидающего зомби
+    private ZombieCustomer FindNearestWaitingZombie()
+    {
+        // Приоритет: первый в очереди
+        CustomerQueueManager queue = FindObjectOfType<CustomerQueueManager>();
+        if (queue != null)
+        {
+            ZombieCustomer first = queue.GetFirstWaitingZombie();
+            if (first != null)
+                return first;
+        }
+
+        // Fallback: ближайший зомби в состоянии Waiting или GettingAngry
+        ZombieCustomer[] all = FindObjectsOfType<ZombieCustomer>();
+        ZombieCustomer nearest = null;
+        float minDist = float.MaxValue;
+        foreach (var z in all)
+        {
+            if (z == null) continue;
+            if (z.currentState == ZombieCustomer.ZombieState.Waiting ||
+                z.currentState == ZombieCustomer.ZombieState.GettingAngry)
+            {
+                float d = Vector3.Distance(transform.position, z.transform.position);
+                if (d < minDist)
+                {
+                    minDist = d;
+                    nearest = z;
+                }
+            }
+        }
+        return nearest;
+    }
+
     public bool PlaceItem(GameObject item, ZombieCustomer zombie)
     {
         if (currentItem != null) return false;
         if (item == null || zombie == null) return false;
 
-        // Разрешаем класть только чистую вещь (после стирки)
         Item itemComp = item.GetComponent<Item>();
         if (itemComp == null || !itemComp.isClean)
         {
-            Debug.LogWarning("DeliveryPoint: нельзя положить грязную вещь — сначала постирай её.");
+            Debug.LogWarning("DeliveryPoint: нельзя положить грязную вещь");
             return false;
         }
 
         currentItem = item;
         waitingZombie = zombie;
 
-        // Отцепляем от руки игрока/якоря и закрепляем на точке
-        item.transform.SetParent(dropPosition != null ? dropPosition : transform, true);
+        Transform target = dropPosition != null ? dropPosition : transform;
+        item.transform.SetParent(target, true);
+        item.transform.position = target.position;
+        item.transform.rotation = target.rotation;
 
-        // Позиционируем вещь
-        if (dropPosition != null)
-        {
-            item.transform.position = dropPosition.position;
-            item.transform.rotation = dropPosition.rotation;
-        }
-        else
-        {
-            item.transform.position = transform.position + Vector3.up * 0.5f;
-        }
-
-        // Отключаем физику и коллайдер
         Rigidbody rb = item.GetComponent<Rigidbody>();
         if (rb != null) rb.isKinematic = true;
 
         Collider col = item.GetComponent<Collider>();
         if (col != null) col.enabled = false;
 
-        // Включаем подсветку
         if (highlightEffect != null)
             highlightEffect.SetActive(true);
 
         Debug.Log($"Вещь {item.name} помещена на точку для зомби {zombie.name}");
-
-        // Теперь зомби должен сам подойти к точке и забрать вещь
         zombie.GoToDeliveryPoint(this);
-
         return true;
     }
 
-    // Зомби забирает вещь
     void DeliverItemToZombie()
     {
         if (currentItem == null || waitingZombie == null) return;
 
-        // Удаляем вещь со сцены (чтобы она не оставалась лежать на полке)
         Destroy(currentItem);
-
-        // Уведомляем зомби
         waitingZombie.PickupItemFromPoint();
-
-        // Очищаем точку
         ClearPoint();
-
         Debug.Log("Вещь отдана зомби!");
     }
 
-    // На случай если зомби сам вызвал PickupItemFromPoint() (например, из SimpleZombieMovement.OnReachedTarget)
     public void ForceClearForZombie(ZombieCustomer zombie)
     {
-        if (zombie == null) return;
-        if (waitingZombie == null) return;
-        if (zombie != waitingZombie) return;
-
+        if (zombie == null || waitingZombie == null || zombie != waitingZombie) return;
         if (currentItem != null)
             Destroy(currentItem);
-
         ClearPoint();
     }
 
     void ClearPoint()
     {
-        // Очищаем ссылки
         currentItem = null;
         waitingZombie = null;
-
-        // Отключаем подсветку
         if (highlightEffect != null)
             highlightEffect.SetActive(false);
     }
 
-    public bool IsAvailable()
-    {
-        return currentItem == null;
-    }
+    public bool IsAvailable() => currentItem == null;
 
-    // Игрок находится в области взаимодействия перед полкой?
     public bool IsPlayerInInteractionZone(Transform player)
     {
         if (player == null) return false;
-        if (interactionZone == null) return true; // fallback: если зоны нет, работаем как раньше
-
-        // Bounds.Contains часто промахивается из‑за pivot игрока (например, у ног).
-        // ClosestPoint дает более надёжную проверку "внутри коллайдера".
+        if (interactionZone == null) return true;
         Vector3 p = player.position;
         Vector3 closest = interactionZone.ClosestPoint(p);
         return (closest - p).sqrMagnitude < 0.0001f;
@@ -167,10 +203,8 @@ public class DeliveryPoint : MonoBehaviour
     void OnDrawGizmos()
     {
         if (!showGizmos) return;
-
         Gizmos.color = Color.blue;
         Gizmos.DrawWireSphere(transform.position, pickupRadius);
-
         if (dropPosition != null)
         {
             Gizmos.color = Color.green;

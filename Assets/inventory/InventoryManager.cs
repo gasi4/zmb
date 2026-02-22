@@ -316,6 +316,18 @@ public class InventoryManager : MonoBehaviour
         return heldItem != null;
     }
 
+    // Публичный доступ к предмету "в руке" инвентаря (нужно для VR-доставки/других систем)
+    public ItemScriptableObject GetItemInHandPublic()
+    {
+        return heldItem;
+    }
+
+    public int GetItemInHandAmountPublic()
+    {
+        return heldItemAmount;
+    }
+
+
     // Сбросить предмет из руки на землю
     public void DropHeldItem()
     {
@@ -362,7 +374,7 @@ public class InventoryManager : MonoBehaviour
 
     // Получить количество предметов в руке
     public int GetHeldItemAmount()
-        {
+    {
         return heldItemAmount;
     }
 

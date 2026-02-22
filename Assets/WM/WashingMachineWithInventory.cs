@@ -317,10 +317,16 @@ public class WashingMachineWithInventory : MonoBehaviour
                     itemComp.amount = 1;
                     itemComp.MakeClean();
 
+                    // Удаляем AutoStoreToInventory, чтобы предмет не добавлялся в инвентарь автоматически
+                    AutoStoreToInventory autoStore = go.GetComponent<AutoStoreToInventory>();
+                    if (autoStore != null)
+                    {
+                        Destroy(autoStore);
+                    }
+
                     spawned++;
                 }
             }
-
         }
 
         washedItems.Clear();
