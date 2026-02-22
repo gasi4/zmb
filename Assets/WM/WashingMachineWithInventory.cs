@@ -3,9 +3,8 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
-using static InventoryManager;
 
-public class WashingMachineWithInventory : WashingMachine
+public class WashingMachineWithInventory : MonoBehaviour
 {
     [Header("UI Elements")]
     public Canvas machineCanvas;
@@ -23,49 +22,64 @@ public class WashingMachineWithInventory : WashingMachine
     public Slider progressSlider;
 
     [Header("Кнопки")]
-    public Button selectFromInventoryBtn; // кнопка "add"
+    public Button selectFromInventoryBtn;
     public Button startWashButton;
     public Button clearMachineButton;
     public Button closeButton;
 
-    [Header("Кнопки режимов стирки (ВМЕСТО Toggle)")]
+    [Header("Режимы стирки")]
     public Button coloredModeButton;
     public Button delicateModeButton;
     public Button quickModeButton;
-
-    [Header("Визуальное выделение активного режима")]
-    public Color selectedColor = Color.yellow;      // цвет выделенной кнопки
-    public Color normalColor = Color.white;         // цвет обычной кнопки
-    public Color disabledColor = Color.gray;        // цвет неактивной кнопки
+    public Color selectedColor = Color.yellow;
+    public Color normalColor = Color.white;
+    public Color disabledColor = Color.gray;
 
     [Header("Информация о режиме")]
     public TextMeshProUGUI modeNameText;
     public TextMeshProUGUI durationText;
 
-    [Header("Предметы в машинке")]
-    [SerializeField] private int currentLoad = 0;
-
     [Header("Таймер и статус")]
     public TextMeshProUGUI timerText;
     public TextMeshProUGUI statusText;
-
-    [Header("World Timer Settings")]
+    public TextMeshProUGUI worldTimerText;
     public float finishedMessageTime = 7f;
-    public TextMeshProUGUI worldTimerText; // добавьте в секцию [Header("Таймер и статус")]
-
 
     [Header("Выход чистых вещей")]
     public Transform cleanItemsSpawnPoint;
 
-    private Coroutine washingCoroutine;
+    [Header("Основные элементы")]
+    public GameObject panel;
+
+    public enum WashMode { Colored, Delicate, Quick }
+
+    [System.Serializable]
+    public class WashModeSettings
+    {
+        public WashMode mode;
+        public string displayName;
+        public float duration;
+        public string description;
+    }
+
+    public List<WashModeSettings> washModes = new List<WashModeSettings>();
+    private WashMode currentMode = WashMode.Colored;
+
+    // -----------------
     private float washingTimer = 0f;
     private float washingDuration = 0f;
-    private readonly List<(ItemScriptableObject item, int amount)> washedItems = new List<(ItemScriptableObject item, int amount)>();
-
-    // Словарь для хранения исходных цветов кнопок (если нужно восстановить)
+    private Coroutine washingCoroutine;
+    private List<(ItemScriptableObject item, int amount)> washedItems = new List<(ItemScriptableObject item, int amount)>();
+    public bool isWashing = false;
     private Dictionary<Button, Color> originalButtonColors = new Dictionary<Button, Color>();
 
-    
+    public float GetProgressPercentage() => washingDuration > 0 ? Mathf.Clamp01(washingTimer / washingDuration) * 100f : 0f;
+    public float GetRemainingTime() => Mathf.Max(0f, washingDuration - washingTimer);
+    public int GetLoadedCount() => GetItemsCount();
+    public int MaxCapacity => machineSlots.Count;
+
+    // Сделаем метод публичным, чтобы UI мог получать настройки
+    public WashModeSettings GetCurrentModeSettingsPublic() => GetCurrentModeSettings();
 
     void Start()
     {
@@ -80,7 +94,7 @@ public class WashingMachineWithInventory : WashingMachine
             cleanItemsSpawnPoint = spawnPoint.transform;
         }
 
-        // Настройка слотов машины
+        // Инициализация слотов
         if (machineSlots.Count == 0 && slotsParent != null)
         {
             foreach (Transform t in slotsParent)
@@ -99,109 +113,63 @@ public class WashingMachineWithInventory : WashingMachine
             Button existingButton = machineSlots[i].GetComponent<Button>();
             if (existingButton == null)
             {
-                machineSlots[i].gameObject.AddComponent<Button>().onClick.AddListener(() =>
-                {
-                    RemoveFromMachine(index);
-                });
+                machineSlots[i].gameObject.AddComponent<Button>().onClick.AddListener(() => RemoveFromMachine(index));
             }
             else
             {
                 existingButton.onClick.RemoveAllListeners();
-                existingButton.onClick.AddListener(() =>
-                {
-                    RemoveFromMachine(index);
-                });
+                existingButton.onClick.AddListener(() => RemoveFromMachine(index));
             }
         }
 
-        // Привязка кнопок
-        if (selectFromInventoryBtn != null)
-            selectFromInventoryBtn.onClick.AddListener(AddItemsFromPlayerInventoryAutomatically);
+        selectFromInventoryBtn?.onClick.AddListener(AddItemsFromPlayerInventoryAutomatically);
+        startWashButton?.onClick.AddListener(StartWashingProcess);
+        clearMachineButton?.onClick.AddListener(ClearAllSlots);
+        closeButton?.onClick.AddListener(() => { });
 
-        if (startWashButton != null)
-            startWashButton.onClick.AddListener(StartWashingProcess);
-
-        if (clearMachineButton != null)
-            clearMachineButton.onClick.AddListener(ClearAllSlots);
-
-        if (closeButton != null)
-            closeButton.onClick.AddListener(CloseUI);
-
-        // Настройка кнопок режимов
         SetupModeButtons();
-
-        // Устанавливаем режим по умолчанию и выделяем соответствующую кнопку
         SetMode(WashMode.Colored);
 
-        // UI всегда активен
-        if (machineCanvas != null)
-            machineCanvas.gameObject.SetActive(true);
+        if (machineCanvas != null) machineCanvas.gameObject.SetActive(true);
 
-        if (capacitySlider != null)
-        {
-            capacitySlider.maxValue = 4f;
-            capacitySlider.value = 0f;
-        }
-
-        if (progressSlider != null)
-            progressSlider.value = 0f;
+        if (capacitySlider != null) { capacitySlider.maxValue = 4; capacitySlider.value = 0; }
+        if (progressSlider != null) progressSlider.value = 0;
 
         UpdateUI();
-
-        if (worldTimerText != null)
-        {
-            worldTimerText.gameObject.SetActive(false);
-        }
     }
 
     void SetupModeButtons()
     {
-        // Сохраняем исходные цвета кнопок (если нужно, но мы будем менять напрямую)
-        if (coloredModeButton != null)
+        void SetupButton(Button btn, WashMode mode)
         {
-            coloredModeButton.onClick.RemoveAllListeners();
-            coloredModeButton.onClick.AddListener(() => { if (!isWashing) SetMode(WashMode.Colored); });
-            originalButtonColors[coloredModeButton] = coloredModeButton.GetComponent<Image>()?.color ?? normalColor;
+            if (btn != null)
+            {
+                btn.onClick.RemoveAllListeners();
+                btn.onClick.AddListener(() => { if (!isWashing) SetMode(mode); });
+                originalButtonColors[btn] = btn.GetComponent<Image>()?.color ?? normalColor;
+            }
         }
 
-        if (delicateModeButton != null)
-        {
-            delicateModeButton.onClick.RemoveAllListeners();
-            delicateModeButton.onClick.AddListener(() => { if (!isWashing) SetMode(WashMode.Delicate); });
-            originalButtonColors[delicateModeButton] = delicateModeButton.GetComponent<Image>()?.color ?? normalColor;
-        }
-
-        if (quickModeButton != null)
-        {
-            quickModeButton.onClick.RemoveAllListeners();
-            quickModeButton.onClick.AddListener(() => { if (!isWashing) SetMode(WashMode.Quick); });
-            originalButtonColors[quickModeButton] = quickModeButton.GetComponent<Image>()?.color ?? normalColor;
-        }
+        SetupButton(coloredModeButton, WashMode.Colored);
+        SetupButton(delicateModeButton, WashMode.Delicate);
+        SetupButton(quickModeButton, WashMode.Quick);
     }
 
-    /// <summary>
-    /// Визуально выделяет кнопку выбранного режима и сбрасывает остальные
-    /// </summary>
     void HighlightModeButton(WashMode mode)
     {
-        // Сбрасываем все кнопки в обычный цвет (или в цвет неактивности, если стирка идёт)
         Color targetNormal = isWashing ? disabledColor : normalColor;
         SetButtonColor(coloredModeButton, targetNormal);
         SetButtonColor(delicateModeButton, targetNormal);
         SetButtonColor(quickModeButton, targetNormal);
 
-        // Выделяем нужную кнопку (даже во время стирки, чтобы показать выбранный режим)
-        Button selected = null;
-        switch (mode)
+        Button selected = mode switch
         {
-            case WashMode.Colored: selected = coloredModeButton; break;
-            case WashMode.Delicate: selected = delicateModeButton; break;
-            case WashMode.Quick: selected = quickModeButton; break;
-        }
-        if (selected != null)
-        {
-            SetButtonColor(selected, selectedColor);
-        }
+            WashMode.Colored => coloredModeButton,
+            WashMode.Delicate => delicateModeButton,
+            WashMode.Quick => quickModeButton,
+            _ => null
+        };
+        if (selected != null) SetButtonColor(selected, selectedColor);
     }
 
     void SetButtonColor(Button btn, Color color)
@@ -213,35 +181,29 @@ public class WashingMachineWithInventory : WashingMachine
         }
     }
 
-    public new void SetMode(WashMode mode)
+    public void SetMode(WashMode mode)
     {
-        if (isWashing)
-        {
-            Debug.LogWarning("Нельзя менять режим во время стирки!");
-            return;
-        }
-
-        base.SetMode(mode); // обновляет currentMode
-        HighlightModeButton(currentMode);
+        if (isWashing) return;
+        currentMode = mode;
+        HighlightModeButton(mode);
         UpdateModeDisplay();
     }
 
+    void UpdateModeDisplay()
+    {
+        if (modeNameText != null && durationText != null)
+        {
+            WashModeSettings settings = GetCurrentModeSettings();
+            modeNameText.text = settings.displayName;
+            durationText.text = $"Длительность: {settings.duration} сек.";
+        }
+    }
+
+    // -----------------------------
     public void AddItemsFromPlayerInventoryAutomatically()
     {
-        Debug.Log("🟢 AddItemsFromPlayerInventoryAutomatically вызван");
-        if (playerInventory == null)
-        {
-            Debug.LogError("InventoryManager не назначен!");
-            return;
-        }
+        if (playerInventory == null || isWashing) return;
 
-        if (isWashing)
-        {
-            Debug.LogWarning("Нельзя добавлять предметы во время стирки!");
-            return;
-        }
-
-        int movedCount = 0;
         for (int p = playerInventory.slots.Count - 1; p >= 0; p--)
         {
             slot playerSlot = playerInventory.slots[p];
@@ -250,17 +212,9 @@ public class WashingMachineWithInventory : WashingMachine
             int machineIndex = FindFirstEmptyMachineSlotIndex();
             if (machineIndex == -1) break;
 
-            ItemScriptableObject itemToMove = playerSlot.item;
-            int amountToMove = playerSlot.amount;
-            machineSlots[machineIndex].FillSlot(itemToMove, amountToMove);
+            machineSlots[machineIndex].FillSlot(playerSlot.item, playerSlot.amount);
             playerSlot.ClearSlot();
-            movedCount++;
         }
-
-        if (movedCount == 0)
-            Debug.Log("Нет предметов для переноса (или машинка заполнена).");
-        else
-            Debug.Log($"Перенесено предметов в стиральную машину: {movedCount}");
 
         UpdateUI();
     }
@@ -268,86 +222,8 @@ public class WashingMachineWithInventory : WashingMachine
     int FindFirstEmptyMachineSlotIndex()
     {
         for (int i = 0; i < machineSlots.Count; i++)
-        {
-            if (machineSlots[i] != null && machineSlots[i].isEmpty)
-                return i;
-        }
+            if (machineSlots[i].isEmpty) return i;
         return -1;
-    }
-
-    public void OpenMachineUI() { /* UI всегда открыт */ }
-    public void CloseUI() { /* UI всегда открыт */ }
-
-    public bool IsUIOpen() => machineCanvas != null && machineCanvas.gameObject.activeSelf;
-
-    public void UpdateUI()
-    {
-        currentLoad = GetItemsCount();
-
-        if (capacitySlider != null)
-            capacitySlider.value = currentLoad;
-
-        bool full = currentLoad >= 4;
-        bool addBtnShouldBeActive = !full && !isWashing;
-        if (selectFromInventoryBtn != null)
-        {
-            selectFromInventoryBtn.interactable = addBtnShouldBeActive;
-            Debug.Log($"Add button interactable: {selectFromInventoryBtn.interactable}, full={full}, isWashing={isWashing}");
-        }
-
-        if (startWashButton != null)
-            startWashButton.interactable = currentLoad > 0 && !isWashing;
-
-        if (clearMachineButton != null)
-            clearMachineButton.interactable = currentLoad > 0 && !isWashing;
-
-        // Блокировка кнопок режимов во время стирки (но они остаются выделенными)
-        bool modeButtonsInteractable = !isWashing;
-        if (coloredModeButton != null) coloredModeButton.interactable = modeButtonsInteractable;
-        if (delicateModeButton != null) delicateModeButton.interactable = modeButtonsInteractable;
-        if (quickModeButton != null) quickModeButton.interactable = modeButtonsInteractable;
-
-        // Обновляем выделение в соответствии с текущим режимом и состоянием isWashing
-        HighlightModeButton(currentMode);
-
-        UpdateModeDisplay();
-
-        if (worldTimerText != null)
-        {
-            if (isWashing)
-            {
-                float remaining = Mathf.Max(0f, washingDuration - washingTimer);
-                worldTimerText.text = $"{remaining:F1} сек";
-                worldTimerText.color = Color.yellow;
-                worldTimerText.gameObject.SetActive(true);
-            }
-            else
-            {
-                worldTimerText.text = "Готово";
-                worldTimerText.color = Color.green;
-                // не выключаем объект
-            }
-        }
-
-        if (worldTimerText != null && !isWashing)
-        {
-            if (currentLoad > 0)
-            {
-                worldTimerText.gameObject.SetActive(true);
-                worldTimerText.text = "Готово к стирке";
-                worldTimerText.color = Color.white;
-            }
-            else
-            {
-                worldTimerText.gameObject.SetActive(false);
-            }
-        }
-    }
-
-    void Update()
-    {
-        if (isWashing)
-            UpdateUI();
     }
 
     void RemoveFromMachine(int machineSlotIndex)
@@ -356,20 +232,13 @@ public class WashingMachineWithInventory : WashingMachine
         slot s = machineSlots[machineSlotIndex];
         if (s.isEmpty) return;
 
-        ItemScriptableObject itemToReturn = s.item;
-        int amount = s.amount;
-
-        if (playerInventory != null && itemToReturn.WorldPrefab != null)
+        if (playerInventory != null && s.item != null && s.item.WorldPrefab != null)
         {
-            GameObject go = Instantiate(itemToReturn.WorldPrefab);
-            Item itemComp = go.GetComponent<Item>();
-            itemComp.item = itemToReturn;
-            itemComp.amount = amount;
+            GameObject go = Instantiate(s.item.WorldPrefab);
             playerInventory.ReturnItemToSlot(go, playerInventory.FindEmptySlot());
         }
 
         s.ClearSlot();
-        currentLoad--;
         UpdateUI();
     }
 
@@ -377,67 +246,45 @@ public class WashingMachineWithInventory : WashingMachine
     {
         for (int i = 0; i < machineSlots.Count; i++)
             RemoveFromMachine(i);
-        UpdateUI();
     }
 
     public void StartWashingProcess()
     {
-        if (currentLoad == 0 || isWashing)
-        {
-            Debug.LogWarning("Нечего стирать или стирка уже идет!");
-            return;
-        }
+        if (isWashing || GetItemsCount() == 0) return;
 
-        // 🔥 СОХРАНЯЕМ ПРЕДМЕТЫ ПЕРЕД StartWashing()
         SaveWashedItems();
 
-        washingDuration = GetCurrentWashDuration();
+        WashModeSettings settings = GetCurrentModeSettings();
+        washingDuration = settings.duration;
         washingTimer = 0f;
 
-
-        if (progressSlider != null)
-        {
-            progressSlider.value = 0f;
-            progressSlider.maxValue = 1f;
-        }
+        if (washingCoroutine != null) StopCoroutine(washingCoroutine);
+        washingCoroutine = StartCoroutine(WashingProgress());
 
         UpdateUI();
-
-        if (washingCoroutine != null)
-            StopCoroutine(washingCoroutine);
-
-        washingCoroutine = StartCoroutine(WashingProgress());
     }
 
     void SaveWashedItems()
     {
         washedItems.Clear();
-
-        foreach (var slot in machineSlots)
-        {
-            if (slot.item != null)
-            {
-                washedItems.Add((slot.item, Mathf.Max(1, slot.amount)));
-            }
-        }
-
-        Debug.Log($"🧺 Сохранено предметов для стирки: {washedItems.Count}");
+        foreach (var s in machineSlots)
+            if (!s.isEmpty && s.item != null)
+                washedItems.Add((s.item, s.amount));
     }
 
     IEnumerator WashingProgress()
     {
+        isWashing = true;
         while (washingTimer < washingDuration)
         {
             washingTimer += Time.deltaTime;
-
-            if (progressSlider != null && washingDuration > 0f)
+            if (progressSlider != null)
                 progressSlider.value = Mathf.Clamp01(washingTimer / washingDuration);
 
             if (worldTimerText != null)
             {
                 float remaining = Mathf.Max(0f, washingDuration - washingTimer);
                 worldTimerText.text = $"{Mathf.Ceil(remaining)} сек";
-                worldTimerText.color = Color.yellow;
             }
 
             yield return null;
@@ -450,7 +297,7 @@ public class WashingMachineWithInventory : WashingMachine
     {
         isWashing = false;
 
-        if (cleanItemsSpawnPoint != null && washedItems.Count > 0)
+        if (cleanItemsSpawnPoint != null)
         {
             float offsetStep = 0.25f;
             int spawned = 0;
@@ -466,7 +313,6 @@ public class WashingMachineWithInventory : WashingMachine
 
                     Item itemComp = go.GetComponent<Item>();
                     if (itemComp == null) itemComp = go.AddComponent<Item>();
-
                     itemComp.item = entry.item;
                     itemComp.amount = 1;
                     itemComp.MakeClean();
@@ -475,47 +321,26 @@ public class WashingMachineWithInventory : WashingMachine
                 }
             }
 
-            Debug.Log($"✅ Стирка завершена! Выдано чистых вещей: {spawned}");
-        }
-        else
-        {
-            Debug.Log("Стирка завершена, но cleanItemsSpawnPoint не задан или нечего выдавать");
         }
 
         washedItems.Clear();
-
         for (int i = 0; i < machineSlots.Count; i++)
-        {
-            if (machineSlots[i] != null)
-                machineSlots[i].ClearSlot();
-        }
-        currentLoad = 0;
+            machineSlots[i].ClearSlot();
 
-        if (progressSlider != null)
-            progressSlider.value = 1f;
+        if (progressSlider != null) progressSlider.value = 1f;
+        if (timerText != null) timerText.text = "Стирка завершена!";
+        if (statusText != null) statusText.text = "ГОТОВО";
 
-        if (timerText != null)
-            timerText.text = "Стирка завершена!";
-
-        if (statusText != null)
-            statusText.text = "ГОТОВО";
-
-        UpdateUI(); // обновит UI, разблокирует кнопки и обновит выделение
-
-        if (worldTimerText != null)
-        {
-            StartCoroutine(ShowFinishedMessage());
-        }
+        StartCoroutine(ShowFinishedMessage());
+        UpdateUI();
     }
 
     IEnumerator ShowFinishedMessage()
     {
+        if (worldTimerText == null) yield break;
         worldTimerText.gameObject.SetActive(true);
         worldTimerText.text = "Вещь постиралась";
-        worldTimerText.color = Color.green;
-
         yield return new WaitForSeconds(finishedMessageTime);
-
         worldTimerText.gameObject.SetActive(false);
     }
 
@@ -527,49 +352,42 @@ public class WashingMachineWithInventory : WashingMachine
         return count;
     }
 
-    public bool AddItemToMachine(ItemScriptableObject item, int amount = 1)
+    public void UpdateUI()
     {
-        if (currentLoad >= machineSlots.Count || isWashing)
-            return false;
+        int load = GetItemsCount();
+        if (capacitySlider != null) capacitySlider.value = load;
+        if (startWashButton != null) startWashButton.interactable = !isWashing && load > 0;
+        if (clearMachineButton != null) clearMachineButton.interactable = !isWashing && load > 0;
+        if (selectFromInventoryBtn != null) selectFromInventoryBtn.interactable = !isWashing && load < machineSlots.Count;
 
-        foreach (var slot in machineSlots)
+        HighlightModeButton(currentMode);
+        UpdateModeDisplay();
+
+        if (worldTimerText != null && isWashing)
         {
-            if (slot.isEmpty)
-            {
-                slot.FillSlot(item, amount);
-                currentLoad++;
-                UpdateUI();
-                return true;
-            }
+            float remaining = Mathf.Max(0f, washingDuration - washingTimer);
+            worldTimerText.text = $"{remaining:F1} сек";
+            worldTimerText.color = Color.yellow;
         }
-        return false;
     }
 
-    void UpdateModeDisplay()
+    // ---------------- Публичный метод для внутреннего GetCurrentModeSettings
+    public WashModeSettings GetCurrentModeSettings()
     {
-        if (modeNameText != null)
+        if (washModes.Count == 0)
         {
-            switch (currentMode)
+            // Инициализация дефолтных режимов
+            washModes = new List<WashModeSettings>
             {
-                case WashMode.Colored:
-                    modeNameText.text = "ЦВЕТНОЕ БЕЛЬЁ";
-                    modeNameText.color = Color.blue;
-                    break;
-                case WashMode.Delicate:
-                    modeNameText.text = "ДЕЛИКАТНОЕ";
-                    modeNameText.color = Color.magenta;
-                    break;
-                case WashMode.Quick:
-                    modeNameText.text = "БЫСТРАЯ СТИРКА";
-                    modeNameText.color = Color.green;
-                    break;
-            }
+                new WashModeSettings { mode = WashMode.Colored, displayName = "ЦВЕТНОЕ", duration = 12f, description = "Для цветного белья" },
+                new WashModeSettings { mode = WashMode.Delicate, displayName = "ДЕЛИКАТНОЕ", duration = 15f, description = "Для деликатных тканей" },
+                new WashModeSettings { mode = WashMode.Quick, displayName = "БЫСТРАЯ", duration = 5f, description = "Быстрая стирка" }
+            };
         }
 
-        if (durationText != null)
-        {
-            float duration = GetCurrentWashDuration();
-            durationText.text = $"Длительность: {duration} сек.";
-        }
+        foreach (var mode in washModes)
+            if (mode.mode == currentMode) return mode;
+
+        return washModes[0];
     }
 }

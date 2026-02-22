@@ -410,50 +410,16 @@ public class FinalPlayerController : MonoBehaviour
     void TryPickupItem()
     {
         if (unifiedRay == null) return;
-
         if (unifiedRay.Raycast(out RaycastHit hit, out Ray ray))
         {
-            HandleHitObject(hit);
+            HandleObjectInteraction(hit.collider.gameObject);
         }
     }
 
-    void HandleHitObject(RaycastHit hit)
-    {
-        GameObject hitObject = hit.collider.gameObject;
-        Debug.Log($"🎯 Луч попал в: {hitObject.name}");
-
-        // ========== ИЗМЕНЕНИЕ: Новая стиралка с UI ==========
-        var machine = hitObject.GetComponentInParent<WashingMachineWithInventory>();
-        
-
-        // ========== ИЗМЕНЕНИЕ: Старая стиралка ==========
-        var oldMachine = hitObject.GetComponentInParent<WashingMachineUI>();
-        if (oldMachine != null)
-        {
-            return;
-        }
-
-        // 2️⃣ Если это предмет мира, берём в руку
-        GrabItemToHand(hitObject);
-    }
-
-    void TryGrab()
-    {
-        if (unifiedRay == null) return;
-
-        if (debugMode) Debug.Log("Пытаюсь схватить...");
-
-        if (unifiedRay.Raycast(out RaycastHit hit, out _))
-        {
-            GrabPhysicalObject(hit.collider.gameObject);
-        }
-    }
-
-    void GrabPhysicalObject(GameObject obj)
+    void HandleObjectInteraction(GameObject obj)
     {
         if (obj == null) return;
-
-        // Если это стиралка — выходим
+        // Игнорируем стиральные машины
         if (obj.GetComponentInParent<WashingMachineWithInventory>() != null) return;
         if (obj.GetComponentInParent<WashingMachineUI>() != null) return;
 
@@ -462,14 +428,34 @@ public class FinalPlayerController : MonoBehaviour
 
         if (isInventoryItem)
         {
-            // Если зажат модификатор — кладём в инвентарь
-            if (IsStoreToInventoryModifierPressed())
-            {
-                inventoryManager?.AddItem(itemComponent.item, itemComponent.amount);
-                Destroy(obj);
-                return;
-            }
+            // Добавляем в инвентарь и уничтожаем объект мира
+            inventoryManager?.AddItem(itemComponent.item, itemComponent.amount);
+            Destroy(obj);
+            Debug.Log($"✅ {itemComponent.item.ItemName} добавлен в инвентарь");
         }
+        else
+        {
+            // Захватываем как физический объект (без добавления в инвентарь)
+            GrabPhysicalObject(obj);
+        }
+    }
+
+    void TryGrab()
+    {
+        if (unifiedRay.Raycast(out RaycastHit hit, out _))
+        {
+            Debug.Log($"Луч попал в: {hit.collider.gameObject.name}, слой: {LayerMask.LayerToName(hit.collider.gameObject.layer)}");
+            HandleObjectInteraction(hit.collider.gameObject);
+        }
+        else
+        {
+            Debug.Log("Луч никуда не попал");
+        }
+    }
+
+    void GrabPhysicalObject(GameObject obj)
+    {
+        if (obj == null) return;
 
         Rigidbody rb = obj.GetComponent<Rigidbody>();
         if (rb == null)
@@ -489,7 +475,7 @@ public class FinalPlayerController : MonoBehaviour
             heldObject.transform.localRotation = Quaternion.identity;
         }
 
-        Debug.Log("📦 Предмет взят в руку");
+        Debug.Log("📦 Физический предмет взят в руку");
     }
 
     public void GrabItemFromInventory(ItemScriptableObject item, int amount)
@@ -666,9 +652,17 @@ public class FinalPlayerController : MonoBehaviour
     {
         if (rightController == null || unifiedRay == null) return;
 
-        if (rightController.selectAction == null) return;
+        // Проверяем, что действие назначено и включено
+        if (rightController.activateAction == null || !rightController.activateAction.action.enabled)
+        {
+            Debug.LogError("Activate action not configured!");
+            return;
+        }
 
-        bool pressed = rightController.selectAction.action.ReadValue<float>() > 0.5f;
+        float activateValue = rightController.activateAction.action.ReadValue<float>();
+        Debug.Log($"Activate value: {activateValue}");
+
+        bool pressed = activateValue > 0.5f;
 
         if (pressed)
         {

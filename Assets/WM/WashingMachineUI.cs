@@ -52,17 +52,9 @@ public class WashingMachineUI : MonoBehaviour
 
     void SetupModeToggles()
     {
-        if (coloredToggle != null)
-            coloredToggle.onValueChanged.AddListener(isOn => { if (isOn) washingMachine?.SetMode(WashingMachine.WashMode.Colored); });
-
-        if (delicateToggle != null)
-            delicateToggle.onValueChanged.AddListener(isOn => { if (isOn) washingMachine?.SetMode(WashingMachine.WashMode.Delicate); });
-
-        if (quickToggle != null)
-            quickToggle.onValueChanged.AddListener(isOn => { if (isOn) washingMachine?.SetMode(WashingMachine.WashMode.Quick); });
-
-        if (coloredToggle != null)
-            coloredToggle.isOn = true;
+        coloredToggle.onValueChanged.AddListener(isOn => { if (isOn) washingMachine?.SetMode(WashingMachineWithInventory.WashMode.Colored); });
+        delicateToggle.onValueChanged.AddListener(isOn => { if (isOn) washingMachine?.SetMode(WashingMachineWithInventory.WashMode.Delicate); });
+        quickToggle.onValueChanged.AddListener(isOn => { if (isOn) washingMachine?.SetMode(WashingMachineWithInventory.WashMode.Quick); });
     }
 
     void Update()
@@ -75,13 +67,10 @@ public class WashingMachineUI : MonoBehaviour
     {
         if (washingMachine == null) return;
 
-        var settings = washingMachine.GetCurrentModeSettings();
-        if (modeNameText != null)
-            modeNameText.text = settings.displayName;
-        if (modeDescriptionText != null)
-            modeDescriptionText.text = settings.description;
-        if (durationText != null)
-            durationText.text = $"Длительность: {settings.duration} сек.";
+        var settings = washingMachine.GetCurrentModeSettingsPublic();
+        if (modeNameText != null) modeNameText.text = settings.displayName;
+        if (modeDescriptionText != null) modeDescriptionText.text = settings.description;
+        if (durationText != null) durationText.text = $"Длительность: {settings.duration} сек.";
 
         if (progressSlider != null)
             progressSlider.value = washingMachine.GetProgressPercentage() / 100f;
@@ -89,21 +78,17 @@ public class WashingMachineUI : MonoBehaviour
         if (washingMachine.isWashing)
         {
             float remaining = washingMachine.GetRemainingTime();
-            if (timerText != null)
-                timerText.text = $"Осталось: {remaining:F1} сек.";
-            if (simpleTimerText != null)
-                simpleTimerText.text = $"{remaining:F1}";
+            if (timerText != null) timerText.text = $"Осталось: {remaining:F1} сек.";
+            if (simpleTimerText != null) simpleTimerText.text = $"{remaining:F1}";
         }
         else
         {
-            if (timerText != null)
-                timerText.text = "Готово к стирке";
-            if (simpleTimerText != null)
-                simpleTimerText.text = "0.0";
+            if (timerText != null) timerText.text = "Готово к стирке";
+            if (simpleTimerText != null) simpleTimerText.text = "0.0";
         }
 
         if (loadedCountText != null)
-            loadedCountText.text = $"Загружено: {washingMachine.GetLoadedCount()}/{washingMachine.maxCapacity}";
+            loadedCountText.text = $"Загружено: {washingMachine.GetLoadedCount()}/{washingMachine.MaxCapacity}";
 
         if (statusText != null)
         {
@@ -119,19 +104,28 @@ public class WashingMachineUI : MonoBehaviour
             startWashButton.interactable = !washingMachine.isWashing && washingMachine.GetLoadedCount() > 0;
     }
 
-    // Публичные методы, вызываемые из WashingMachine (базового класса)
-    public void UpdateUIPublic()
-    {
-        UpdateUI();
-    }
+    // Публичные методы, вызываемые из WashingMachineWithInventory
+    public void UpdateUIPublic() => UpdateUI();
 
     public void SetStatus(string status)
     {
-        // Можно обновить статус, но UpdateUI() уже делает это на основе isWashing
+        // Можно обновить статус, но UpdateUI уже делает это
         UpdateUI();
     }
-
     public void UpdateModeDisplay(WashingMachine.WashModeSettings settings)
+    {
+        // Преобразуем enum, предполагая, что значения совпадают
+        var newSettings = new WashingMachineWithInventory.WashModeSettings
+        {
+            mode = (WashingMachineWithInventory.WashMode)(int)settings.mode,
+            displayName = settings.displayName,
+            duration = settings.duration,
+            description = settings.description
+        };
+        // Вызываем существующий метод с правильным типом
+        UpdateModeDisplay(newSettings);
+    }
+    public void UpdateModeDisplay(WashingMachineWithInventory.WashModeSettings settings)
     {
         UpdateUI();
     }

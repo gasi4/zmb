@@ -131,14 +131,13 @@ public class SimpleZombieMovement : MonoBehaviour
 
         const float arriveEpsilon = 0.05f;
 
-        // ===================== 🔴 ГЛАВНЫЙ ФИКС 🔴 =====================
-        // Если цель — игрок и мы уже на нужной дистанции → СТОИМ, НЕ ДВИГАЕМСЯ
+        // Если цель — игрок и мы уже на нужной дистанции, то НЕ сбрасываем isMoving навсегда.
+        // Иначе зомби "залипает" после первой атаки и дальше только поворачивается.
         if (isPlayerTarget && distance <= stoppingDistance)
         {
-            isMoving = false;
+            // Стоим на месте, но продолжаем обновлять направление (поворот к игроку)
             UpdateAnimMovement();
 
-            // Только поворачиваемся к игроку
             if (direction != Vector3.zero)
             {
                 Quaternion lookRot = Quaternion.LookRotation(direction);
@@ -149,9 +148,9 @@ public class SimpleZombieMovement : MonoBehaviour
                 );
             }
 
-            return; // ⛔ НЕ даём логике движения идти дальше
+            return;
         }
-        // =============================================================
+
 
         if (distance > stoppingDistance + arriveEpsilon)
         {

@@ -1,11 +1,7 @@
-﻿
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
-using System.Net;
-using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.UI;
-using static ZombieCustomer;
 
 public class ZombieCustomer : MonoBehaviour
 {
@@ -21,13 +17,10 @@ public class ZombieCustomer : MonoBehaviour
 
     void Awake()
     {
-        // На случай если на префабе состояние/рендеры сохранены в "плохом" виде
         currentState = ZombieState.Spawning;
-
         Renderer[] rs = GetComponentsInChildren<Renderer>(true);
         foreach (var r in rs)
             r.enabled = true;
-
         gameObject.SetActive(true);
     }
 
@@ -38,24 +31,24 @@ public class ZombieCustomer : MonoBehaviour
     }
 
     [Header("Настройки зомби")]
-    public float waitTime = 30f; // Время ожидания до агрессии (УСТАНАВЛИВАЕТСЯ МЕНЕДЖЕРОМ!)
-    public float patienceDecreaseRate = 1f; // Скорость снижения терпения
+    public float waitTime = 30f;
+    public float patienceDecreaseRate = 1f;
     public float walkSpeed = 2f;
     public float angrySpeed = 4f;
 
     [Header("Точки движения")]
-    public Transform spawnPoint; // Точка спавна
-    public Transform servicePoint; // Точка обслуживания (стол)
-    public Transform playerTarget; // Игрок (цель для атаки)
+    public Transform spawnPoint;
+    public Transform servicePoint;
+    public Transform playerTarget;
 
     [Header("Предметы")]
-    public GameObject requestedItemPrefab; // Префаб запрашиваемой вещи
-    public Transform[] itemSpawnPoints; // МАССИВ точек вместо одной!
-    public float itemSpawnOffset = 0.5f; // Смещение между предметами
+    public GameObject requestedItemPrefab;
+    public Transform[] itemSpawnPoints;
+    public float itemSpawnOffset = 0.5f;
 
     [Header("Точка выдачи")]
-    public DeliveryPoint deliveryPoint; // Ссылка на точку выдачи
-    public float deliveryPickupDistance = 1f; // Расстояние на котором зомби забирает вещь
+    public DeliveryPoint deliveryPoint;
+    public float deliveryPickupDistance = 1f;
 
     [Header("Очередь")]
     public CustomerQueueManager queueManager;
@@ -64,35 +57,32 @@ public class ZombieCustomer : MonoBehaviour
 
     public enum ZombieState
     {
-        Spawning,           // Появление
-        WalkingToQueue,     // Идет к очереди
-        InLine,             // Стоит в очереди (НЕ первый, без ожидания/терпения)
-        Waiting,            // Ожидает заказ (ТОЛЬКО первый)
-        GettingAngry,       // Начинает злиться
-        Angry,              // Атакует игрока
-        GoingToDelivery,    // Идет за вещью на точку выдачи
-        PickingUpItem,      // Забирает вещь с точки
-        Leaving             // Уходит
+        Spawning,
+        WalkingToQueue,
+        InLine,
+        Waiting,
+        GettingAngry,
+        Angry,
+        GoingToDelivery,
+        PickingUpItem,
+        Leaving
     }
 
-    private GameObject itemToPickup; // Вещь которую нужно забрать
+    private GameObject itemToPickup;
 
     [Header("UI")]
-    public Slider patienceSlider; // Слайдер терпения
-    public GameObject patienceUI; // Объект UI терпения
-
-    [Header("UI Префабы (для автосоздания)")]
-    public GameObject patienceUIPrefab; // Префаб UI
+    public Slider patienceSlider;
+    public GameObject patienceUI;
+    public GameObject patienceUIPrefab;
 
     [Header("Движение")]
-    public bool useSimpleMovement = true; // Используем простую систему
-    public float interactionDistance = 1f; // дистанция для НЕ-боевых взаимодействий (очередь/выдача/уход)
+    public bool useSimpleMovement = true;
+    public float interactionDistance = 1f;
 
     [Header("Attack")]
     public float attackDamage = 25f;
     public float attackCooldown = 1f;
     public float attackRange = 1.6f;
-    [Tooltip("На какой дистанции зомби должен ОСТАНАВЛИВАТЬСЯ при атаке (чтобы не вплотную входить в игрока).")]
     public float attackStopDistance = 1.4f;
     private float lastAttackTime = -999f;
 
@@ -108,14 +98,13 @@ public class ZombieCustomer : MonoBehaviour
 
     private SimpleZombieMovement simpleMovement;
     private float currentPatience;
-    private GameObject spawnedItem; // Созданная вещь на столе
+    private GameObject spawnedItem;
     private bool itemDelivered = false;
-    private List<GameObject> spawnedItems = new List<GameObject>(); // Все созданные предметы
+    private List<GameObject> spawnedItems = new List<GameObject>();
     private bool waveManagerNotified = false;
     private bool waveManagerDespawnNotified = false;
-    private int currentSpawnIndex = 0; // Индекс текущей точки спавна
+    private int currentSpawnIndex = 0;
     private static bool isQuitting = false;
-
 
     void OnApplicationQuit()
     {
@@ -127,13 +116,18 @@ public class ZombieCustomer : MonoBehaviour
         if (animator == null)
             animator = GetComponentInChildren<Animator>(true);
 
-        // Инициализация
         currentPatience = waitTime;
-
-        // Инициализируем UI
         InitializeUI();
 
-        // Запускаем появление
+        if (patienceUI != null)
+            patienceUI.SetActive(true);
+
+        if (patienceSlider != null)
+        {
+            patienceSlider.maxValue = waitTime;
+            patienceSlider.value = currentPatience;
+        }
+
         StartCoroutine(SpawnSequence());
     }
 
@@ -147,28 +141,19 @@ public class ZombieCustomer : MonoBehaviour
         if (testMode)
             Debug.Log($"{gameObject.name} забирает вещь с точки");
 
-        // Уничтожаем запрашиваемую вещь на столе
         if (spawnedItem != null)
         {
             Destroy(spawnedItem);
             spawnedItem = null;
         }
 
-        // Если вещь лежит на DeliveryPoint — удаляем её, даже если PickupItemFromPoint вызван не из DeliveryPoint
         if (deliveryPoint != null)
             deliveryPoint.ForceClearForZombie(this);
 
-        // Уничтожаем все созданные предметы
         ClearAllSpawnedItems();
-
-        // Снимаемся с очереди (освобождаем место)
         LeaveQueue();
-
-        // Уведомляем менеджер об успешной доставке (волна считается пройденной по этому событию)
         NotifyWaveManager();
-
-        // Короткая пауза перед уходом
-        StartCoroutine(WaitAndLeave(0.5f)); ;
+        StartCoroutine(WaitAndLeave(0.5f));
     }
 
     IEnumerator WaitAndLeave(float seconds)
@@ -182,25 +167,21 @@ public class ZombieCustomer : MonoBehaviour
         if ((currentState != ZombieState.Waiting && currentState != ZombieState.GettingAngry && currentState != ZombieState.Angry) || point == null)
             return;
 
-        // Реалистичный сдвиг очереди: как только первый ушёл с QueuePoint1 — следующий становится первым
         if (queueManager != null)
             queueManager.OnFrontZombieLeftPoint(this);
 
         currentState = ZombieState.GoingToDelivery;
         deliveryPoint = point;
 
-        // Если зомби был в агре — прекращаем атаки и идём за вещью
         if (attackCoroutine != null)
         {
             StopCoroutine(attackCoroutine);
             attackCoroutine = null;
         }
 
-        // Убираем UI терпения
         if (patienceUI != null)
             patienceUI.SetActive(false);
 
-        // Идем к точке выдачи
         if (useSimpleMovement)
         {
             if (simpleMovement == null)
@@ -211,9 +192,6 @@ public class ZombieCustomer : MonoBehaviour
 
             Transform targetTf = point.dropPosition != null ? point.dropPosition : point.transform;
             simpleMovement.SetTarget(targetTf);
-
-            // Останавливаемся "по краю" сферы pickupRadius, а не в центре точки.
-            // Чуть меньше радиуса, чтобы гарантированно попасть в условие distance <= pickupRadius.
             simpleMovement.stoppingDistance = Mathf.Max(0.1f, point.pickupRadius - 0.05f);
             simpleMovement.speed = walkSpeed;
         }
@@ -224,41 +202,27 @@ public class ZombieCustomer : MonoBehaviour
 
     void InitializeUI()
     {
-        // Вариант 1: Если UI уже назначен в инспекторе
         if (patienceUI != null)
-        {
-            patienceUI.SetActive(false);
             return;
-        }
 
-        // Вариант 2: Создаем UI автоматически
         if (patienceUIPrefab != null)
         {
-            // Создаем UI в мировом пространстве
-            patienceUI = Instantiate(patienceUIPrefab);
-
-            // Находим слайдер в созданном UI
+            patienceUI = Instantiate(patienceUIPrefab, transform);
+            patienceUI.name = $"{patienceUIPrefab.name}_{gameObject.name}";
             patienceSlider = patienceUI.GetComponentInChildren<Slider>();
-
             if (patienceSlider != null)
             {
                 patienceSlider.maxValue = waitTime;
                 patienceSlider.value = currentPatience;
             }
-
-            patienceUI.SetActive(false);
         }
     }
 
     IEnumerator SpawnSequence()
     {
         currentState = ZombieState.Spawning;
-
-        // Короткая пауза при появлении
         yield return new WaitForSeconds(1f);
 
-        // Если зомби управляется очередью, servicePoint может быть назначен чуть позже.
-        // В этом случае НЕ переводим его в WalkingToQueue раньше времени.
         if (servicePoint != null)
         {
             GoToServicePoint();
@@ -271,34 +235,27 @@ public class ZombieCustomer : MonoBehaviour
 
     public void GoToServicePoint()
     {
-        // Разрешаем повторно вызывать, когда очередь сдвигает зомби вперед
         if (currentState != ZombieState.Spawning && currentState != ZombieState.WalkingToQueue && currentState != ZombieState.InLine)
             return;
 
-        // Нельзя идти, если точка не назначена
         if (servicePoint == null)
         {
             if (testMode)
                 Debug.LogWarning($"{gameObject.name}: servicePoint не назначен — не могу идти к очереди");
-
             return;
         }
 
         currentState = ZombieState.WalkingToQueue;
 
-        // Используем простую систему движения
         if (useSimpleMovement)
         {
-            // Получаем или добавляем SimpleZombieMovement
             simpleMovement = GetComponent<SimpleZombieMovement>();
-
             if (simpleMovement == null)
             {
                 simpleMovement = gameObject.AddComponent<SimpleZombieMovement>();
                 simpleMovement.speed = walkSpeed;
                 simpleMovement.stoppingDistance = 1.5f;
             }
-
             simpleMovement.speed = walkSpeed;
             simpleMovement.stoppingDistance = interactionDistance;
             simpleMovement.SetTarget(servicePoint);
@@ -309,7 +266,6 @@ public class ZombieCustomer : MonoBehaviour
     {
         if (currentState != ZombieState.WalkingToQueue) return;
 
-        // Если это НЕ первый в очереди (не QueuePoint1) — просто стоим и ждём сдвига
         if (queueManager != null && !queueManager.IsFrontZombie(this))
         {
             currentState = ZombieState.InLine;
@@ -317,33 +273,23 @@ public class ZombieCustomer : MonoBehaviour
         }
 
         currentState = ZombieState.Waiting;
-
-        // Сбрасываем флаг перед попыткой создания
         itemSpawnedSuccessfully = false;
 
-        // Поворачиваемся к столу
         if (itemSpawnPoints != null && itemSpawnPoints.Length > 0 && itemSpawnPoints[0] != null)
         {
             Vector3 direction = (itemSpawnPoints[0].position - transform.position).normalized;
             direction.y = 0;
-
             if (direction != Vector3.zero)
                 transform.rotation = Quaternion.LookRotation(direction);
         }
 
-        // Спавним запрашиваемую вещь на столе (только у первого)
         SpawnRequestedItem();
 
-        // Проверяем успешность создания перед показом UI
         if (itemSpawnedSuccessfully)
         {
-            // Показываем UI терпения если он существует
             if (patienceUI != null)
-            {
                 patienceUI.SetActive(true);
-            }
 
-            // Устанавливаем начальное терпение
             currentPatience = waitTime;
 
             if (patienceSlider != null)
@@ -354,45 +300,29 @@ public class ZombieCustomer : MonoBehaviour
         }
         else
         {
-            // Если предмет не создан - обрабатываем ошибку
             if (spawnedItem == null)
-            {
                 CantSpawnItem();
-            }
             else
-            {
-                // Если spawnedItem существует, но флаг не установлен - исправляем
                 itemSpawnedSuccessfully = true;
-            }
         }
     }
 
     void Update()
     {
-        // Проверяем достиг ли цели (простая версия)
         if (currentState == ZombieState.WalkingToQueue && servicePoint != null)
         {
-            float distance = Vector3.Distance(transform.position, servicePoint.position);
-            if (distance < interactionDistance)
-            {
+            Vector3 a = transform.position; a.y = 0f;
+            Vector3 b = servicePoint.position; b.y = 0f;
+            float distance = Vector3.Distance(a, b);
+            if (distance <= interactionDistance)
                 ArrivedAtServicePoint();
-            }
         }
 
-        // НЕ подбираем вещь сами по дистанции: этим занимается DeliveryPoint (он знает currentItem/pickupRadius).
-        // Иначе мы можем переключить состояние раньше и DeliveryPoint не отдаст предмет.
-        if (currentState == ZombieState.GoingToDelivery && deliveryPoint != null)
-        {
-            // ничего
-        }
-
-        // Терпение должно убывать и в Waiting, и в GettingAngry (раньше останавливалось на 50%).
         if (currentState == ZombieState.Waiting || currentState == ZombieState.GettingAngry)
         {
             UpdatePatience();
         }
 
-        // Атака по кд даже если стоим на месте (через дистанцию до capsule collider)
         if (currentState == ZombieState.Angry)
         {
             if (cachedPlayerHealth == null)
@@ -414,9 +344,7 @@ public class ZombieCustomer : MonoBehaviour
             return;
         }
 
-        // Находим свободную точку спавна
         Transform spawnPoint = GetFreeSpawnPoint();
-
         if (spawnPoint == null)
         {
             Debug.LogError($"{gameObject.name}: Не могу найти точку спавна!");
@@ -424,66 +352,43 @@ public class ZombieCustomer : MonoBehaviour
             return;
         }
 
-        // Создаем предмет
         spawnedItem = Instantiate(requestedItemPrefab, spawnPoint.position, spawnPoint.rotation);
         spawnedItem.name = $"RequestedItem_{gameObject.name}";
-
-        // Устанавливаем флаг УСПЕШНОГО создания
         itemSpawnedSuccessfully = true;
-
-        // Добавляем в список
         spawnedItems.Add(spawnedItem);
 
-        // Проверяем MeshRenderer/Renderer
         Renderer renderer = spawnedItem.GetComponent<Renderer>();
         if (renderer != null)
-        {
             renderer.enabled = true;
-        }
         else
         {
-            // Ищем в дочерних объектах
             Renderer[] childRenderers = spawnedItem.GetComponentsInChildren<Renderer>();
             foreach (Renderer r in childRenderers)
-            {
                 r.enabled = true;
-            }
         }
 
-        // Добавляем скрипт для взаимодействия
         ZombieRequestItem interactable = spawnedItem.GetComponent<ZombieRequestItem>();
         if (interactable == null)
-        {
             interactable = spawnedItem.AddComponent<ZombieRequestItem>();
-        }
-
         interactable.SetZombieCustomer(this);
     }
 
     Transform GetFreeSpawnPoint()
     {
         if (itemSpawnPoints == null || itemSpawnPoints.Length == 0)
-        {
             return CreateTemporarySpawnPoint();
-        }
 
-        // Ищем свободную точку
         for (int i = 0; i < itemSpawnPoints.Length; i++)
         {
             int index = (currentSpawnIndex + i) % itemSpawnPoints.Length;
             if (itemSpawnPoints[index] == null) continue;
-
-            // Проверяем нет ли предмета на этой точке
-            bool isOccupied = IsSpawnPointOccupied(itemSpawnPoints[index].position);
-
-            if (!isOccupied)
+            if (!IsSpawnPointOccupied(itemSpawnPoints[index].position))
             {
                 currentSpawnIndex = (index + 1) % itemSpawnPoints.Length;
                 return itemSpawnPoints[index];
             }
         }
 
-        // Если все точки заняты, создаем рядом со случайной
         Transform randomPoint = itemSpawnPoints[Random.Range(0, itemSpawnPoints.Length)];
         if (randomPoint != null)
         {
@@ -491,11 +396,9 @@ public class ZombieCustomer : MonoBehaviour
                 new Vector3(Random.Range(-itemSpawnOffset, itemSpawnOffset),
                            0,
                            Random.Range(-itemSpawnOffset, itemSpawnOffset));
-
             GameObject tempPoint = new GameObject("TempSpawnPoint");
             tempPoint.transform.position = offsetPos;
             tempPoint.transform.rotation = randomPoint.rotation;
-
             Destroy(tempPoint, 10f);
             return tempPoint.transform;
         }
@@ -505,75 +408,53 @@ public class ZombieCustomer : MonoBehaviour
 
     Transform CreateTemporarySpawnPoint()
     {
-        // Создаем точку рядом со столом
         Vector3 tablePosition = FindTablePosition();
         Vector3 spawnPosition = tablePosition + new Vector3(
             Random.Range(-1f, 1f),
             0.5f,
             Random.Range(-1f, 1f)
         );
-
         GameObject tempPoint = new GameObject($"TempSpawn_{gameObject.name}");
         tempPoint.transform.position = spawnPosition;
         tempPoint.transform.rotation = Quaternion.identity;
-
         Destroy(tempPoint, 30f);
         return tempPoint.transform;
     }
 
     Vector3 FindTablePosition()
     {
-        // Ищем стол в сцене
         GameObject table = GameObject.FindGameObjectWithTag("Table");
         if (table != null) return table.transform.position;
-
-        // Или используем servicePoint
         if (servicePoint != null) return servicePoint.position;
-
-        // Или позицию зомби
         return transform.position + transform.forward * 2f;
     }
 
     bool IsSpawnPointOccupied(Vector3 position)
     {
-        // Проверяем коллайдерами
         Collider[] colliders = Physics.OverlapSphere(position, 0.3f);
-
         foreach (Collider col in colliders)
         {
-            // Если на точке уже есть предмет (не сам зомби)
             if (col.gameObject != gameObject &&
                 (col.CompareTag("Item") || col.GetComponent<Item>() != null))
-            {
                 return true;
-            }
         }
-
         return false;
     }
 
     void CantSpawnItem()
     {
-        // Если предмета действительно нет
         GetAngry();
     }
 
     void UpdatePatience()
     {
-        // Важная проверка: если предмет не создан или уже отдан, не обновляем терпение
-        if (!itemSpawnedSuccessfully || itemDelivered)
-        {
-            return;
-        }
+        if (itemDelivered) return;
 
         currentPatience -= Time.deltaTime * patienceDecreaseRate;
 
-        // Обновляем UI ТОЛЬКО если слайдер существует
         if (patienceSlider != null)
         {
             patienceSlider.value = currentPatience;
-
-            // Меняем цвет в зависимости от терпения
             Image fillImage = patienceSlider.fillRect?.GetComponent<Image>();
             if (fillImage != null)
             {
@@ -586,14 +467,44 @@ public class ZombieCustomer : MonoBehaviour
             }
         }
 
-        // Проверяем терпение
-        if (currentPatience <= 0 && currentState != ZombieState.Angry)
-        {
+        if (currentPatience <= 0f && currentState != ZombieState.Angry)
             GetAngry();
-        }
         else if (currentPatience <= waitTime * 0.5f && currentState == ZombieState.Waiting)
-        {
             StartGettingAngry();
+    }
+
+    void LateUpdate()
+    {
+        if (patienceUI != null && patienceUI.activeSelf)
+        {
+            Vector3 worldPos = transform.position + Vector3.up * 2.2f;
+
+            if (animator == null)
+                animator = GetComponentInChildren<Animator>(true);
+
+            Transform head = null;
+            if (animator != null && animator.isHuman)
+                head = animator.GetBoneTransform(HumanBodyBones.Head);
+
+            if (head != null)
+                worldPos = head.position + Vector3.up * 8f;
+            else
+            {
+                Renderer r = GetComponentInChildren<Renderer>();
+                if (r != null)
+                    worldPos = r.bounds.max + Vector3.up * 0.2f;
+            }
+
+            patienceUI.transform.position = worldPos;
+
+            Camera cam = Camera.main;
+            if (cam != null)
+            {
+                Vector3 dir = patienceUI.transform.position - cam.transform.position;
+                dir.y = 0f;
+                if (dir.sqrMagnitude > 0.0001f)
+                    patienceUI.transform.rotation = Quaternion.LookRotation(dir);
+            }
         }
     }
 
@@ -604,69 +515,53 @@ public class ZombieCustomer : MonoBehaviour
 
     void GetAngry()
     {
-        // Проверяем состояние
         if (currentState == ZombieState.Angry) return;
 
         currentState = ZombieState.Angry;
-
-        // Снимаемся с очереди (освобождаем место)
         LeaveQueue();
 
-        // ВАЖНО: при агре НЕ считаем зомби "завершённым" и НЕ удаляем запрашиваемую вещь.
-        // Игрок должен иметь возможность забрать её, постирать и принести на DeliveryPoint.
-
-        // Убираем UI терпения
         if (patienceUI != null)
-        {
             patienceUI.SetActive(false);
-        }
 
-        // Привязываем цель к реальному объекту игрока (а не к камере/ригу), чтобы дистанция считалась правильно
         if (cachedPlayerHealth == null)
             cachedPlayerHealth = playerTarget != null ? playerTarget.GetComponentInParent<PlayerHealth>() : null;
-
         if (cachedPlayerHealth == null)
             cachedPlayerHealth = FindObjectOfType<PlayerHealth>();
 
         if (cachedPlayerHealth != null)
             playerTarget = cachedPlayerHealth.transform;
 
-        // Начинаем преследовать игрока
         if (playerTarget != null)
         {
             SimpleZombieMovement movement = GetComponent<SimpleZombieMovement>();
             if (movement != null)
             {
                 movement.SetTarget(playerTarget);
-
-                // Требование: скорость = 1.5 * значение, заданное до начала (берём walkSpeed как базовую)
                 movement.speed = walkSpeed * 1.5f;
-
-                // Держим дистанцию перед игроком: примерно attackRange (чуть меньше, чтобы стабильно входить в радиус удара),                // но не слишком маленькую, чтобы не "входить" в игрока.
                 movement.stoppingDistance = Mathf.Max(attackRange - 0.1f, 1.2f);
             }
         }
-
-
     }
 
     void TryAttack(PlayerHealth ph)
     {
-
         if (ph == null) return;
 
-        // Во время атаки всегда разворачиваемся к игроку (по XZ), чтобы удар выглядел правильно
+        if (playerTarget != null)
+        {
+            SimpleZombieMovement chase = GetComponent<SimpleZombieMovement>();
+            if (chase != null)
+                chase.SetTarget(playerTarget);
+        }
+
         if (playerTarget != null)
         {
             Vector3 lookDir = playerTarget.position - transform.position;
             lookDir.y = 0f;
-
             if (lookDir.sqrMagnitude > 0.0001f)
                 transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(lookDir), 12f * Time.deltaTime);
         }
 
-        // Бьём только если реально в радиусе.
-        // Считаем дистанцию по XZ до ближайшей точки capsule (иначе из-за Y может не бить в упор).
         Vector2 zXZ = new Vector2(transform.position.x, transform.position.z);
         float dist = Vector2.Distance(zXZ, new Vector2(ph.transform.position.x, ph.transform.position.z));
 
@@ -676,46 +571,27 @@ public class ZombieCustomer : MonoBehaviour
             Vector3 closest = cc.ClosestPoint(transform.position);
             dist = Vector2.Distance(zXZ, new Vector2(closest.x, closest.z));
 
-            // Бьём только в радиусе attackRange (с небольшим допуском на погрешности коллайдеров).
             if (dist > attackRange + 0.15f) return;
-
-
 
             if (Time.time - lastAttackTime < attackCooldown) return;
 
             lastAttackTime = Time.time;
-
-            // Анимация удара
             PlayAttackAnimation();
-
             ph.TakeDamage(attackDamage);
         }
 
         void PlayAttackAnimation()
         {
             if (animator == null) return;
-
-            // Вариант 1: Trigger Attack
             if (!useIsAttackingBool && !string.IsNullOrEmpty(attackTrigger))
                 animator.SetTrigger(attackTrigger);
-
-            // Вариант 2: bool IsAttacking
             if (useIsAttackingBool && !string.IsNullOrEmpty(isAttackingBool))
                 animator.SetBool(isAttackingBool, true);
         }
 
-        // StopAttackAnimationBool() удалён: метод не вызывался и создавал предупреждение компилятора.
-
-
-        // Убрано OnCollisionStay и OnTriggerStay, т.к. теперь урон по dist в TryAttack (из Update/AttackLoop).
-        // Это позволяет наносить урон без Trigger на зомби (чтобы не проходить сквозь), 
-        // но с физическим collider'ом на игроке (для барьера).
-        // AttackLoop() удалён: корутина не запускалась и создавалась локально без использования.
         SimpleZombieMovement movement = GetComponent<SimpleZombieMovement>();
-        ;
         if (movement != null)
         {
-            // Если в зоне удара — стопаем движение
             if (dist <= attackRange)
             {
                 movement.isMoving = false;
@@ -724,15 +600,13 @@ public class ZombieCustomer : MonoBehaviour
             else
             {
                 movement.isMoving = true;
+                movement.UpdateAnimMovement();
             }
         }
     }
 
     public void DeliverItem(GameObject deliveredItem)
     {
-        // Этот метод теперь вызывается из DeliveryPoint
-        // Старая логика удалена
-
         if (testMode)
             Debug.Log($"DeliverItem вызван, но используется новая система");
     }
@@ -742,20 +616,15 @@ public class ZombieCustomer : MonoBehaviour
         foreach (GameObject item in spawnedItems)
         {
             if (item != null)
-            {
                 Destroy(item);
-            }
         }
-
         spawnedItems.Clear();
     }
 
     void LeaveQueue()
     {
         if (removedFromQueue) return;
-
         removedFromQueue = true;
-
         if (queueManager != null)
             queueManager.RemoveZombie(this);
     }
@@ -763,12 +632,8 @@ public class ZombieCustomer : MonoBehaviour
     void Leave()
     {
         currentState = ZombieState.Leaving;
-
-
-
         LeaveQueue();
 
-        // Идем к точке спавна
         if (spawnPoint != null)
         {
             SimpleZombieMovement movement = GetComponent<SimpleZombieMovement>();
@@ -780,47 +645,35 @@ public class ZombieCustomer : MonoBehaviour
         }
         else
         {
-            // Если нет точки спавна, просто уничтожаем
             Destroy(gameObject);
         }
     }
 
-    // Уведомляем менеджер волн о завершении зомби
     void NotifyWaveManager()
     {
         if (waveManagerNotified) return;
-
         waveManagerNotified = true;
 
-        // Ищем менеджер через синглтон
         ZombieWaveManager waveManager = ZombieWaveManager.Instance;
-
-        // ПРОВЕРЯЕМ ЕСТЬ ЛИ ОН ВООБЩЕ В СЦЕНЕ
         if (waveManager != null)
         {
             waveManager.OnZombieFinished(this);
         }
-        else
+        else if (testMode)
         {
-            // Если менеджера нет, логируем только в debug режиме
-            if (testMode)
-                Debug.LogWarning($"Зомби {gameObject.name}: не найден ZombieWaveManager! " +
-                               $"Это нормально при завершении игры.");
+            Debug.LogWarning($"Зомби {gameObject.name}: не найден ZombieWaveManager! " +
+                           $"Это нормально при завершении игры.");
         }
     }
 
     void OnDestroy()
     {
         ClearAllSpawnedItems();
-
         LeaveQueue();
 
-        // Сообщаем спавнеру, чтобы он мог завершать волны корректно
         if (spawnManager != null)
             spawnManager.NotifyZombieRemoved(this);
 
-        // Отдельно сообщаем WaveManager, что зомби реально исчез (Destroy)
-        // (нужно, чтобы победный экран показывался после ухода последнего зомби).
         if (!isQuitting && Application.isPlaying)
         {
             NotifyWaveManagerDespawn();
@@ -830,7 +683,6 @@ public class ZombieCustomer : MonoBehaviour
     void NotifyWaveManagerDespawn()
     {
         if (waveManagerDespawnNotified) return;
-
         waveManagerDespawnNotified = true;
 
         ZombieWaveManager waveManager = ZombieWaveManager.Instance;
@@ -863,7 +715,6 @@ public class ZombieCustomer : MonoBehaviour
 
     void OnDrawGizmosSelected()
     {
-        // Визуализация в редакторе
         if (servicePoint != null)
         {
             Gizmos.color = Color.yellow;
@@ -876,5 +727,4 @@ public class ZombieCustomer : MonoBehaviour
             Gizmos.DrawLine(transform.position, spawnPoint.position);
         }
     }
-
 }
