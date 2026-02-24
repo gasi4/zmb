@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Tshirt
   m_EditorClassIdentifier: 
   ItemName: folded_clothes
-  WorldPrefab: {fileID: 2765129319978043786, guid: 7c771df427d2dd84da3b15b382d2afcb, type: 3}
+  WorldPrefab: {fileID: 1346311191560492942, guid: 646c8083314f66546a3ed06edb1b098a, type: 3}
   HandPrefab: {fileID: 7787127868583858372, guid: 0d5081901c4230d4d8f43dd811e92b20, type: 3}
   Icon: {fileID: -197803561, guid: f352b65e0fc043848a132bf4cb5c4fc1, type: 3}
   MaxAmount: 1
