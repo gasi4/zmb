@@ -1,4 +1,4 @@
-using UnityEngine;
+п»їusing UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using TMPro;
@@ -7,20 +7,20 @@ public class GameOverUI : MonoBehaviour
 {
     private static GameOverUI instance;
 
-    [Header("UI (назначь в инспекторе)")]
-    public GameObject root;          // весь экран GameOver (Panel/Overlay)
-    public Image overlay;            // красная полупрозрачная картинка
-    public TMP_Text titleText;       // "вас убили"
-    public Button tryAgainButton;    // кнопка Try Again
+    [Header("UI (РЅР°Р·РЅР°С‡СЊ РІ РёРЅСЃРїРµРєС‚РѕСЂРµ)")]
+    public GameObject root;          // РІРµСЃСЊ СЌРєСЂР°РЅ GameOver (Panel/Overlay)
+    public Image overlay;            // РєСЂР°СЃРЅР°СЏ РїРѕР»СѓРїСЂРѕР·СЂР°С‡РЅР°СЏ РєР°СЂС‚РёРЅРєР°
+    public TMP_Text titleText;       // "РІР°СЃ СѓР±РёР»Рё"
+    public Button tryAgainButton;    // РєРЅРѕРїРєР° Try Again
 
-    [Header("Тексты")]
-    public string title = "вас убили";
+    [Header("РўРµРєСЃС‚С‹")]
+    public string title = "РІР°СЃ СѓР±РёР»Рё";
 
     void Awake()
     {
         instance = this;
 
-        // Оверлей должен быть на заднем плане, иначе он может перекрыть TMP-тексты/кнопки
+        // РћРІРµСЂР»РµР№ РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РЅР° Р·Р°РґРЅРµРј РїР»Р°РЅРµ, РёРЅР°С‡Рµ РѕРЅ РјРѕР¶РµС‚ РїРµСЂРµРєСЂС‹С‚СЊ TMP-С‚РµРєСЃС‚С‹/РєРЅРѕРїРєРё
         if (overlay != null)
         {
             overlay.raycastTarget = false;
@@ -40,7 +40,7 @@ public class GameOverUI : MonoBehaviour
 
         if (instance == null)
         {
-            Debug.LogError("GameOverUI: не найден в сцене. Добавь Canvas/Panel и повесь на него GameOverUI.");
+            Debug.LogError("GameOverUI: РЅРµ РЅР°Р№РґРµРЅ РІ СЃС†РµРЅРµ. Р”РѕР±Р°РІСЊ Canvas/Panel Рё РїРѕРІРµСЃСЊ РЅР° РЅРµРіРѕ GameOverUI.");
             return;
         }
 
@@ -52,44 +52,52 @@ public class GameOverUI : MonoBehaviour
         if (root != null) root.SetActive(true);
         else gameObject.SetActive(true);
 
-        // Поднимаем канвас меню выше других UI (на случай нескольких Canvas в сцене)
-        Canvas c = (root != null ? root.GetComponentInParent<Canvas>(true) : GetComponentInParent<Canvas>(true));
-        if (c != null)
-        {
-            c.overrideSorting = true;
-            c.sortingOrder = 9999;
-        }
-
         if (titleText != null)
             titleText.text = title;
 
-        // На всякий случай принудительно включаем все TMP-тексты в этом меню
-        GameObject r = root != null ? root : gameObject;
-        TMP_Text[] tmps = r.GetComponentsInChildren<TMP_Text>(true);
-        foreach (var t in tmps)
-        {
-            if (t == null) continue;
-            t.enabled = true;
-            t.gameObject.SetActive(true);
-            Color col = t.color;
-            col.a = 1f;
-            t.color = col;
-            t.ForceMeshUpdate(true, true);
-        }
+        // ===== VR: СЂР°Р·РјРµС‰Р°РµРј РєР°РЅРІР°СЃ РїРµСЂРµРґ Р»РёС†РѕРј РёРіСЂРѕРєР° =====
+        PositionInFrontOfPlayer();
 
-        // Оверлей точно на задний план внутри root
+        // РћРІРµСЂР»РµР№ РЅР° Р·Р°РґРЅРёР№ РїР»Р°РЅ
         if (overlay != null)
         {
             overlay.raycastTarget = false;
             overlay.transform.SetAsFirstSibling();
         }
 
-        // Обновляем канвасы после включения root, чтобы TMP/лейаут точно пересчитались
         Canvas.ForceUpdateCanvases();
 
-        Time.timeScale = 0f;
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
+        // Р’ VR РќР• СЃС‚Р°РІРёРј Time.timeScale = 0, 
+        // РёРЅР°С‡Рµ XR rig РїРµСЂРµСЃС‚Р°РЅРµС‚ С‚СЂРµРєР°С‚СЊ РіРѕР»РѕРІСѓ!
+        // Time.timeScale = 0f;  // в†ђ РЈР‘Р•Р Р Р­РўРћ Р’ VR
+
+        Debug.Log("GameOverUI: РїРѕРєР°Р·Р°РЅ!");
+    }
+
+    void PositionInFrontOfPlayer()
+    {
+        // РС‰РµРј VR-РєР°РјРµСЂСѓ
+        Camera vrCam = Camera.main;
+        if (vrCam == null) return;
+
+        Canvas canvas = GetComponentInParent<Canvas>();
+        if (canvas == null) return;
+
+        // РЎС‚Р°РІРёРј Canvas РІ World Space (РЅР° СЃР»СѓС‡Р°Р№ РµСЃР»Рё Р·Р°Р±С‹Р» РІ РёРЅСЃРїРµРєС‚РѕСЂРµ)
+        canvas.renderMode = RenderMode.WorldSpace;
+
+        // Р Р°Р·РјРµС‰Р°РµРј РїРµСЂРµРґ РіР»Р°Р·Р°РјРё
+        Transform canvasTransform = canvas.transform;
+        float distanceFromFace = 2f; // РјРµС‚СЂС‹ РїРµСЂРµРґ РёРіСЂРѕРєРѕРј
+
+        canvasTransform.position = vrCam.transform.position
+                                  + vrCam.transform.forward * distanceFromFace;
+        canvasTransform.rotation = Quaternion.LookRotation(
+            canvasTransform.position - vrCam.transform.position
+        );
+
+        // РњР°СЃС€С‚Р°Р± РґР»СЏ World Space (С‡С‚РѕР±С‹ РЅРµ Р±С‹Р» РіРёРіР°РЅС‚СЃРєРёРј)
+        canvasTransform.localScale = Vector3.one * 0.002f;
     }
 
     void HideImmediate()

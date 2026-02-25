@@ -14,7 +14,7 @@ public class ZombieCustomer : MonoBehaviour
     public string isAttackingBool = "IsAttacking";
     [Tooltip("Если true — выставляем IsAttacking bool вместо Trigger.")]
     public bool useIsAttackingBool = false;
-
+    private ZombieSounds zombieSounds;
     void Awake()
     {
         currentState = ZombieState.Spawning;
@@ -113,6 +113,7 @@ public class ZombieCustomer : MonoBehaviour
 
     void Start()
     {
+        zombieSounds = GetComponent<ZombieSounds>();
         if (animator == null)
             animator = GetComponentInChildren<Animator>(true);
 
@@ -518,6 +519,10 @@ public class ZombieCustomer : MonoBehaviour
         if (currentState == ZombieState.Angry) return;
 
         currentState = ZombieState.Angry;
+
+        if (zombieSounds != null)
+            zombieSounds.PlayAngrySound();
+
         LeaveQueue();
 
         if (patienceUI != null)
@@ -587,21 +592,24 @@ public class ZombieCustomer : MonoBehaviour
                 animator.SetTrigger(attackTrigger);
             if (useIsAttackingBool && !string.IsNullOrEmpty(isAttackingBool))
                 animator.SetBool(isAttackingBool, true);
+            if (zombieSounds != null)
+                zombieSounds.PlayAttackSound();
         }
 
+        // ===== ИСПРАВЛЕННЫЙ БЛОК =====
         SimpleZombieMovement movement = GetComponent<SimpleZombieMovement>();
         if (movement != null)
         {
             if (dist <= attackRange)
             {
                 movement.isMoving = false;
-                movement.UpdateAnimMovement();
             }
             else
             {
                 movement.isMoving = true;
-                movement.UpdateAnimMovement();
             }
+            // UpdateAnimMovement теперь существует как публичный метод
+            movement.UpdateAnimMovement();
         }
     }
 

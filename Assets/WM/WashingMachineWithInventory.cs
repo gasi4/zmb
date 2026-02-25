@@ -44,6 +44,7 @@ public class WashingMachineWithInventory : MonoBehaviour
     public TextMeshProUGUI statusText;
     public TextMeshProUGUI worldTimerText;
     public float finishedMessageTime = 7f;
+    private Coroutine finishedMessageCoroutine;
 
     [Header("Выход чистых вещей")]
     public Transform cleanItemsSpawnPoint;
@@ -258,6 +259,24 @@ public class WashingMachineWithInventory : MonoBehaviour
         washingDuration = settings.duration;
         washingTimer = 0f;
 
+        // ===== ИСПРАВЛЕНИЕ: принудительно включаем таймер =====
+        if (worldTimerText != null)
+        {
+            worldTimerText.gameObject.SetActive(true);
+            worldTimerText.text = $"{Mathf.Ceil(washingDuration)} сек";
+            worldTimerText.color = Color.yellow;
+        }
+
+        if (progressSlider != null)
+            progressSlider.value = 0f;
+
+        if (timerText != null)
+            timerText.text = "";
+
+        if (statusText != null)
+            statusText.text = "СТИРКА...";
+        // ========================================================
+
         if (washingCoroutine != null) StopCoroutine(washingCoroutine);
         washingCoroutine = StartCoroutine(WashingProgress());
 
@@ -317,12 +336,9 @@ public class WashingMachineWithInventory : MonoBehaviour
                     itemComp.amount = 1;
                     itemComp.MakeClean();
 
-                    // Удаляем AutoStoreToInventory, чтобы предмет не добавлялся в инвентарь автоматически
                     AutoStoreToInventory autoStore = go.GetComponent<AutoStoreToInventory>();
                     if (autoStore != null)
-                    {
                         Destroy(autoStore);
-                    }
 
                     spawned++;
                 }
@@ -337,17 +353,32 @@ public class WashingMachineWithInventory : MonoBehaviour
         if (timerText != null) timerText.text = "Стирка завершена!";
         if (statusText != null) statusText.text = "ГОТОВО";
 
-        StartCoroutine(ShowFinishedMessage());
+        // ===== ИСПРАВЛЕНИЕ: останавливаем предыдущую корутину сообщения =====
+        if (finishedMessageCoroutine != null)
+            StopCoroutine(finishedMessageCoroutine);
+        finishedMessageCoroutine = StartCoroutine(ShowFinishedMessage());
+        // ====================================================================
+
         UpdateUI();
     }
 
     IEnumerator ShowFinishedMessage()
     {
         if (worldTimerText == null) yield break;
+
         worldTimerText.gameObject.SetActive(true);
         worldTimerText.text = "Вещь постиралась";
+        worldTimerText.color = Color.green;
+
         yield return new WaitForSeconds(finishedMessageTime);
-        worldTimerText.gameObject.SetActive(false);
+
+        // ===== ИСПРАВЛЕНИЕ: не прячем, а просто очищаем текст =====
+        worldTimerText.text = "";
+        worldTimerText.color = Color.yellow;
+        // Оставляем gameObject активным, чтобы при следующей стирке не было проблем
+        // ============================================================
+
+        finishedMessageCoroutine = null;
     }
 
     int GetItemsCount()

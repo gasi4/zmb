@@ -1,29 +1,52 @@
-using UnityEngine;
+п»їusing UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using TMPro;
+using UnityEngine.XR.Interaction.Toolkit.UI;
 
 public class VictoryUI : MonoBehaviour
 {
     private static VictoryUI instance;
 
-    [Header("UI (назначь в инспекторе)")]
-    public GameObject root;          // весь экран Victory (Panel/Overlay)
-    public Image overlay;            // можно оставить красный/зелёный/любой
-    public TMP_Text titleText;       // "победа" и т.п.
-    public Button toMenuButton;      // кнопка "в меню"
+    [Header("UI (пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ)")]
+    public GameObject root;
+    public Image overlay;
+    public TMP_Text titleText;
+    public Button toMenuButton;
 
-    [Header("Тексты")]
-    public string title = "победа";
+    [Header("пїЅпїЅпїЅпїЅпїЅпїЅ")]
+    public string title = "пїЅпїЅпїЅпїЅпїЅпїЅ";
 
-    [Header("Переход")]
-    public string menuSceneName = "MainMenu"; // позже настроишь
+    [Header("пїЅпїЅпїЅпїЅпїЅпїЅпїЅ")]
+    public string menuSceneName = "MainMenu";
+
+    [Header("VR пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ")]
+    [Tooltip("пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ (пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ)")]
+    public float distanceFromCamera = 2.0f;
+
+    [Tooltip("пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅ")]
+    public float worldScale = 0.002f;
+
+    [Tooltip("пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ (пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ)")]
+    public float heightOffset = 0f;
+
+    [Tooltip("пїЅпїЅпїЅпїЅ true пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ")]
+    public bool facePlayer = true;
+
+    private Canvas canvas;
+    private Transform vrCamera;
 
     void Awake()
     {
         instance = this;
 
-        // Оверлей на задний план
+        canvas = GetComponentInParent<Canvas>(true);
+        if (canvas == null && root != null)
+            canvas = root.GetComponentInParent<Canvas>(true);
+
+        // ========== пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ CANVAS пїЅ WORLD SPACE ==========
+        SetupWorldSpaceCanvas();
+
         if (overlay != null)
         {
             overlay.raycastTarget = false;
@@ -36,6 +59,90 @@ public class VictoryUI : MonoBehaviour
         HideImmediate();
     }
 
+    void SetupWorldSpaceCanvas()
+    {
+        if (canvas == null) return;
+
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ World Space
+        canvas.renderMode = RenderMode.WorldSpace;
+
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ UI пїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+        canvas.transform.localScale = Vector3.one * worldScale;
+
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ (World Space пїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ)
+        canvas.worldCamera = null;
+
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ TrackedDeviceGraphicRaycaster пїЅпїЅпїЅ XR пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+        // (пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ VR пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ)
+        if (canvas.GetComponent<TrackedDeviceGraphicRaycaster>() == null)
+            canvas.gameObject.AddComponent<TrackedDeviceGraphicRaycaster>();
+
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ GraphicRaycaster (пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ)
+        GraphicRaycaster gr = canvas.GetComponent<GraphicRaycaster>();
+        if (gr != null)
+            Destroy(gr);
+    }
+
+    /// <summary>
+    /// пїЅпїЅпїЅпїЅпїЅпїЅпїЅ VR-пїЅпїЅпїЅпїЅпїЅпїЅ (Main Camera пїЅ XR Rig)
+    /// </summary>
+    Transform GetVRCamera()
+    {
+        if (vrCamera != null) return vrCamera;
+
+        // пїЅпїЅпїЅпїЅпїЅпїЅ 1: Camera.main
+        if (Camera.main != null)
+        {
+            vrCamera = Camera.main.transform;
+            return vrCamera;
+        }
+
+        // пїЅпїЅпїЅпїЅпїЅпїЅ 2: пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ
+        GameObject camObj = GameObject.FindGameObjectWithTag("MainCamera");
+        if (camObj != null)
+        {
+            vrCamera = camObj.transform;
+            return vrCamera;
+        }
+
+        Debug.LogWarning("VictoryUI: пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ VR-пїЅпїЅпїЅпїЅпїЅпїЅ!");
+        return null;
+    }
+
+    /// <summary>
+    /// пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ VR-пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+    /// </summary>
+    void PositionInFrontOfPlayer()
+    {
+        Transform cam = GetVRCamera();
+        if (cam == null) return;
+
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅ: пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+        Vector3 forward = cam.forward;
+        forward.y = 0f; // пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ/пїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
+        if (forward.sqrMagnitude < 0.001f)
+            forward = cam.forward; // fallback пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ/пїЅпїЅпїЅпїЅ
+
+        forward.Normalize();
+
+        Vector3 position = cam.position
+            + forward * distanceFromCamera
+            + Vector3.up * heightOffset;
+
+        // пїЅпїЅпїЅпїЅпїЅпїЅ Canvas (пїЅпїЅ root, пїЅ пїЅпїЅпїЅ Canvas)
+        Transform target = canvas != null ? canvas.transform : (root != null ? root.transform : transform);
+
+        target.position = position;
+
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
+        if (facePlayer)
+        {
+            target.rotation = Quaternion.LookRotation(target.position - cam.position, Vector3.up);
+        }
+    }
+
+    // ===================== SHOW / HIDE =====================
+
     public static void Show()
     {
         if (instance == null)
@@ -43,7 +150,7 @@ public class VictoryUI : MonoBehaviour
 
         if (instance == null)
         {
-            Debug.LogError("VictoryUI: не найден в сцене. Добавь Canvas/Panel и повесь на него VictoryUI.");
+            Debug.LogError("VictoryUI: пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅ.");
             return;
         }
 
@@ -55,18 +162,17 @@ public class VictoryUI : MonoBehaviour
         if (root != null) root.SetActive(true);
         else gameObject.SetActive(true);
 
-        // Поднимаем канвас выше других UI
-        Canvas c = (root != null ? root.GetComponentInParent<Canvas>(true) : GetComponentInParent<Canvas>(true));
-        if (c != null)
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ sorting
+        if (canvas != null)
         {
-            c.overrideSorting = true;
-            c.sortingOrder = 9999;
+            canvas.overrideSorting = true;
+            canvas.sortingOrder = 9999;
         }
 
         if (titleText != null)
             titleText.text = title;
 
-        // Принудительно включаем TMP-тексты
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ TMP-пїЅпїЅпїЅпїЅпїЅпїЅ
         GameObject r = root != null ? root : gameObject;
         TMP_Text[] tmps = r.GetComponentsInChildren<TMP_Text>(true);
         foreach (var t in tmps)
@@ -80,18 +186,34 @@ public class VictoryUI : MonoBehaviour
             t.ForceMeshUpdate(true, true);
         }
 
-        // Оверлей точно на задний план
         if (overlay != null)
         {
             overlay.raycastTarget = false;
             overlay.transform.SetAsFirstSibling();
         }
 
+        // ========== пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ: пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ ==========
+        PositionInFrontOfPlayer();
+
         Canvas.ForceUpdateCanvases();
 
         Time.timeScale = 0f;
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
+    }
+
+    void Update()
+    {
+        // пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅ facePlayer пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
+        bool isActive = root != null ? root.activeSelf : gameObject.activeSelf;
+        if (!isActive || !facePlayer) return;
+
+        Transform cam = GetVRCamera();
+        if (cam == null) return;
+
+        Transform target = canvas != null ? canvas.transform : transform;
+        Quaternion lookRot = Quaternion.LookRotation(target.position - cam.position, Vector3.up);
+        target.rotation = Quaternion.Slerp(target.rotation, lookRot, Time.unscaledDeltaTime * 5f);
     }
 
     void HideImmediate()

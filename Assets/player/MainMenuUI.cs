@@ -29,9 +29,7 @@ public class MainMenuUI : MonoBehaviour
 
     void Awake()
     {
-        // Меню должно работать даже если до этого игра ставила паузу
         Time.timeScale = 1f;
-
         ShowMain();
 
         if (titleText != null)
@@ -71,14 +69,17 @@ public class MainMenuUI : MonoBehaviour
             return;
         }
 
+        // ====== ДОБАВЬ ЭТУ СТРОКУ ======
+        if (MusicManager.Instance != null)
+            MusicManager.Instance.StartMusic();
+        // ================================
+
         SceneManager.LoadScene(gameSceneName);
     }
 
     void Quit()
     {
         Debug.Log("MainMenuUI: Quit pressed");
-
-        // В билде это закроет игру; в Unity Editor нужно остановить Play Mode
         Application.Quit();
 
 #if UNITY_EDITOR
@@ -101,7 +102,7 @@ public class MainMenuUI : MonoBehaviour
     void LoadSettingsToUI()
     {
         float volume = PlayerPrefs.GetFloat(PrefVolume, 1f);
-        int difficulty = PlayerPrefs.GetInt(PrefDifficulty, 1); // 0=Easy,1=Normal,2=Hard
+        int difficulty = PlayerPrefs.GetInt(PrefDifficulty, 1);
 
         AudioListener.volume = Mathf.Clamp01(volume);
 
@@ -118,6 +119,11 @@ public class MainMenuUI : MonoBehaviour
         AudioListener.volume = v;
         PlayerPrefs.SetFloat(PrefVolume, v);
         PlayerPrefs.Save();
+
+        // ====== ДОБАВЬ ЭТИ 2 СТРОКИ ======
+        if (MusicManager.Instance != null)
+            MusicManager.Instance.SetVolume(v);
+        // ==================================
     }
 
     void OnDifficultyChanged(int idx)

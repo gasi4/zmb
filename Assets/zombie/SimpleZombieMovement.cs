@@ -1,10 +1,11 @@
 ﻿using UnityEngine;
-using System.Collections;
+using UnityEngine.AI;
 
+[RequireComponent(typeof(NavMeshAgent))]
 public class SimpleZombieMovement : MonoBehaviour
 {
     [Header("Настройки движения")]
-    public Transform target; // Цель (стол или игрок)
+    public Transform target;
     public float speed = 2f;
     public float stoppingDistance = 1f;
     public float rotationSpeed = 5f;
@@ -12,21 +13,21 @@ public class SimpleZombieMovement : MonoBehaviour
     [Header("Компоненты")]
     [HideInInspector] public bool isMoving = true;
     private bool isInitialized = false;
-    private Collider selfCol;
+    private NavMeshAgent agent;
 
     [Header("Animation")]
-    [Tooltip("Animator на зомби (если не задан — будет найден в детях).")]
     public Animator animator;
-    [Tooltip("Имя float-параметра скорости в Animator.")]
     public string speedParam = "Speed";
-    [Tooltip("Если true — будет выставлять bool IsMoving (если он есть в Animator).")]
     public bool setIsMovingBool = false;
-    [Tooltip("Имя bool-параметра движения в Animator (опционально).")]
     public string isMovingParam = "IsMoving";
 
-    [Header("Anti-penetration")]
-    public float penetrationSkin = 0.02f;
+    [Header("NavMesh")]
+    public float pathUpdateInterval = 0.3f;
+    private float pathUpdateTimer = 0f;
 
+    // Сглаживание анимации
+    private float smoothSpeed = 0f;
+    private const float ANIM_SMOOTH_SPEED = 5f;
 
     void Start()
     {
@@ -35,147 +36,285 @@ public class SimpleZombieMovement : MonoBehaviour
 
     void Initialize()
     {
+        // ========== УБИРАЕМ ВСЁ ЧТО МЕШАЕТ ==========
+
+        // Rigidbody конфликтует с NavMeshAgent — УДАЛЯЕМ
+        Rigidbody rb = GetComponent<Rigidbody>();
+        if (rb != null)
+        {
+            Destroy(rb);
+            Debug.Log($"{gameObject.name}: Удалён Rigidbody (конфликт с NavMeshAgent)");
+        }
+
+        // Удаляем Rigidbody с дочерних тоже
+        foreach (Rigidbody childRb in GetComponentsInChildren<Rigidbody>())
+        {
+            if (childRb != null)
+                Destroy(childRb);
+        }
+
+        // CharacterController тоже не нужен
+        CharacterController cc = GetComponent<CharacterController>();
+        if (cc != null)
+        {
+            Destroy(cc);
+            Debug.Log($"{gameObject.name}: Удалён CharacterController");
+        }
+
+        // ========== NavMeshAgent ==========
+        agent = GetComponent<NavMeshAgent>();
+        if (agent == null)
+            agent = gameObject.AddComponent<NavMeshAgent>();
+
+        agent.speed = speed;
+        agent.stoppingDistance = stoppingDistance;
+        agent.angularSpeed = 0f;         // МЫ сами вращаем — не NavMeshAgent
+        agent.acceleration = 8f;
+        agent.obstacleAvoidanceType = ObstacleAvoidanceType.HighQualityObstacleAvoidance;
+        agent.avoidancePriority = Random.Range(30, 70); // разный приоритет чтобы не толкались
+        agent.autoTraverseOffMeshLink = true;
+        agent.updateRotation = false;    // МЫ вращаем
+        agent.updateUpAxis = true;
+        agent.baseOffset = 0f;
+        agent.radius = 0.4f;            // подгони под размер зомби
+        agent.height = 2f;              // подгони под размер зомби
+
+        // ========== Animator ==========
         if (animator == null)
             animator = GetComponentInChildren<Animator>(true);
 
-        if (animator != null && animator.avatar == null)
-        {
-            Debug.LogWarning($"{gameObject.name}: Animator найден, но Avatar = None. " +
-                             "Для humanoid-анимаций нужен Avatar в FBX (Rig->Humanoid) или назначь Avatar вручную.");
-        }
-
-        // Проверяем что target назначен
+        // ========== Target ==========
         if (target == null)
         {
-            Debug.LogWarning($"{gameObject.name}: Target не назначен! Буду искать 'ServicePoint'");
-
-            // Автоматически ищем ServicePoint
             GameObject servicePoint = GameObject.Find("ServicePoint");
             if (servicePoint != null)
-            {
                 target = servicePoint.transform;
-                Debug.Log($"Найден ServicePoint: {target.name}");
-            }
             else
             {
-                Debug.LogError($"{gameObject.name}: Не могу найти ServicePoint!");
-                enabled = false; // Отключаем скрипт
+                Debug.LogError($"{gameObject.name}: Target не найден!");
+                enabled = false;
                 return;
             }
         }
 
-        // УДАЛЯЕМ CharacterController если есть
-        CharacterController oldController = GetComponent<CharacterController>();
-        if (oldController != null)
+        // ========== Ставим на NavMesh ==========
+        StartCoroutine(PlaceOnNavMesh());
+    }
+
+    System.Collections.IEnumerator PlaceOnNavMesh()
+    {
+        // Ждём 1 кадр чтобы Destroy(Rigidbody) успел сработать
+        yield return null;
+
+        // Выравниваем поворот ПЕРЕД размещением
+        Vector3 euler = transform.eulerAngles;
+        euler.x = 0f;
+        euler.z = 0f;
+        transform.eulerAngles = euler;
+
+        if (!agent.isOnNavMesh)
         {
-            Destroy(oldController);
-            Debug.Log($"{gameObject.name}: Удален CharacterController");
+            NavMeshHit hit;
+            if (NavMesh.SamplePosition(transform.position, out hit, 10f, NavMesh.AllAreas))
+            {
+                agent.enabled = false;
+                transform.position = hit.position;
+                agent.enabled = true;
+                agent.Warp(hit.position);
+            }
+            else
+            {
+                Debug.LogError($"{gameObject.name}: Не могу найти NavMesh рядом!");
+                enabled = false;
+                yield break;
+            }
         }
-
-        // ДОБАВЛЯЕМ Rigidbody для простой физики
-        Rigidbody rb = GetComponent<Rigidbody>();
-        if (rb == null)
-        {
-            rb = gameObject.AddComponent<Rigidbody>();
-        }
-
-        // НАСТРАИВАЕМ Rigidbody (важно!)
-        rb.isKinematic = true;       // Кинематический = не падает от гравитации
-        rb.useGravity = false;       // Отключаем гравитацию
-        rb.constraints = RigidbodyConstraints.FreezeRotationX |
-                         RigidbodyConstraints.FreezeRotationZ |
-                         RigidbodyConstraints.FreezePositionY; // Замораживаем движение по Y
-
-        // Коллайдер нужен, чтобы не заходить внутрь игрока/препятствий
-        selfCol = GetComponent<Collider>();
-        if (selfCol == null)
-            selfCol = GetComponentInChildren<Collider>();
 
         isInitialized = true;
-        Debug.Log($"{gameObject.name}: Инициализирован (без CharacterController)");
+
+        // Сразу задаём цель
+        if (target != null && agent.isOnNavMesh)
+        {
+            agent.isStopped = false;
+            SetNavMeshDestination(target.position);
+        }
     }
 
     void Update()
     {
         if (!isInitialized) return;
+        if (agent == null || !agent.isOnNavMesh) return;
 
-        // Анимация: скорость/движение
-        UpdateAnimMovement();
+        // КАЖДЫЙ КАДР фиксим поворот
+        ForceUpright();
 
-        if (target == null || !isMoving) return;
+        // Анимация
+        UpdateAnimation();
 
-        // Ищем коллайдер цели
-        Collider targetCol = target.GetComponentInChildren<Collider>();
-        bool canUseClosestPoint = targetCol != null && !targetCol.isTrigger;
-
-        // Является ли цель игроком
-        bool isPlayerTarget =
-            target.CompareTag("Player") ||
-            target.GetComponentInParent<PlayerHealth>() != null;
-
-        // Точка, к которой идём
-        Vector3 aimPoint =
-            (canUseClosestPoint && !isPlayerTarget)
-            ? targetCol.ClosestPoint(transform.position)
-            : target.position;
-
-        // Направление (без Y)
-        Vector3 targetPos = new Vector3(aimPoint.x, transform.position.y, aimPoint.z);
-        Vector3 direction = (targetPos - transform.position).normalized;
-
-        // Дистанция по XZ
-        float distance = Vector3.Distance(
-            new Vector3(transform.position.x, 0, transform.position.z),
-            new Vector3(aimPoint.x, 0, aimPoint.z)
-        );
-
-        const float arriveEpsilon = 0.05f;
-
-        // Если цель — игрок и мы уже на нужной дистанции, то НЕ сбрасываем isMoving навсегда.
-        // Иначе зомби "залипает" после первой атаки и дальше только поворачивается.
-        if (isPlayerTarget && distance <= stoppingDistance)
+        if (target == null || !isMoving)
         {
-            // Стоим на месте, но продолжаем обновлять направление (поворот к игроку)
-            UpdateAnimMovement();
+            StopAgent();
+            return;
+        }
 
-            if (direction != Vector3.zero)
+        // Обновляем путь
+        pathUpdateTimer -= Time.deltaTime;
+        if (pathUpdateTimer <= 0f)
+        {
+            pathUpdateTimer = pathUpdateInterval;
+            UpdateDestination();
+        }
+
+        // Поворот
+        SmoothRotation();
+
+        // Проверяем дошёл ли
+        CheckArrival();
+    }
+
+    void LateUpdate()
+    {
+        // ПОСЛЕ всех расчётов — ещё раз фиксим
+        if (isInitialized)
+            ForceUpright();
+    }
+
+    // ==================== ПОВОРОТ ====================
+
+    void ForceUpright()
+    {
+        // Принудительно убираем ЛЮБОЙ наклон
+        Vector3 euler = transform.eulerAngles;
+        euler.x = 0f;
+        euler.z = 0f;
+        transform.eulerAngles = euler;
+    }
+
+    void SmoothRotation()
+    {
+        if (agent == null) return;
+
+        Vector3 moveDir = agent.desiredVelocity;
+        moveDir.y = 0f;
+
+        if (moveDir.sqrMagnitude > 0.05f)
+        {
+            // Поворачиваемся в сторону движения
+            Quaternion targetRot = Quaternion.LookRotation(moveDir.normalized, Vector3.up);
+
+            // Убираем наклон из целевого поворота
+            Vector3 targetEuler = targetRot.eulerAngles;
+            targetEuler.x = 0f;
+            targetEuler.z = 0f;
+            targetRot = Quaternion.Euler(targetEuler);
+
+            transform.rotation = Quaternion.Slerp(
+                transform.rotation,
+                targetRot,
+                rotationSpeed * Time.deltaTime
+            );
+        }
+        else if (target != null)
+        {
+            // Стоим — смотрим на цель
+            Vector3 dirToTarget = target.position - transform.position;
+            dirToTarget.y = 0f;
+
+            if (dirToTarget.sqrMagnitude > 0.1f)
             {
-                Quaternion lookRot = Quaternion.LookRotation(direction);
+                Quaternion lookRot = Quaternion.LookRotation(dirToTarget.normalized, Vector3.up);
+
+                Vector3 lookEuler = lookRot.eulerAngles;
+                lookEuler.x = 0f;
+                lookEuler.z = 0f;
+                lookRot = Quaternion.Euler(lookEuler);
+
                 transform.rotation = Quaternion.Slerp(
                     transform.rotation,
                     lookRot,
                     rotationSpeed * Time.deltaTime
                 );
             }
+        }
+    }
 
+    // ==================== НАВИГАЦИЯ ====================
+
+    void UpdateDestination()
+    {
+        if (target == null || agent == null || !agent.isOnNavMesh) return;
+
+        Vector3 destination = target.position;
+
+        bool isPlayerTarget = target.CompareTag("Player") ||
+                              target.GetComponentInParent<PlayerHealth>() != null;
+
+        if (!isPlayerTarget)
+        {
+            Collider targetCol = target.GetComponentInChildren<Collider>();
+            if (targetCol != null && !targetCol.isTrigger)
+                destination = targetCol.ClosestPoint(transform.position);
+        }
+
+        SetNavMeshDestination(destination);
+    }
+
+    void SetNavMeshDestination(Vector3 worldPos)
+    {
+        // Находим ближайшую точку на NavMesh
+        NavMeshHit hit;
+        if (NavMesh.SamplePosition(worldPos, out hit, 5f, NavMesh.AllAreas))
+            worldPos = hit.position;
+
+        agent.stoppingDistance = stoppingDistance;
+        agent.speed = speed;
+        agent.isStopped = false;
+        agent.SetDestination(worldPos);
+    }
+
+    void CheckArrival()
+    {
+        if (target == null) return;
+        if (agent.pathPending) return;
+
+        bool isPlayerTarget = target.CompareTag("Player") ||
+                              target.GetComponentInParent<PlayerHealth>() != null;
+
+        float distance = agent.remainingDistance;
+
+        // Фоллбэк если remainingDistance врёт
+        if (distance < 0.01f && agent.pathStatus != NavMeshPathStatus.PathComplete)
+        {
+            Vector3 flatPos = new Vector3(transform.position.x, 0, transform.position.z);
+            Vector3 flatTarget = new Vector3(target.position.x, 0, target.position.z);
+            distance = Vector3.Distance(flatPos, flatTarget);
+        }
+
+        // Путь невозможен
+        if (agent.pathStatus == NavMeshPathStatus.PathInvalid ||
+            agent.pathStatus == NavMeshPathStatus.PathPartial)
+        {
+            NavMeshHit hit;
+            if (NavMesh.SamplePosition(target.position, out hit, 5f, NavMesh.AllAreas))
+                agent.SetDestination(hit.position);
+        }
+
+        // Игрок
+        if (isPlayerTarget)
+        {
+            if (distance <= stoppingDistance + 0.1f)
+                StopAgent();
+            else if (agent.isStopped)
+            {
+                agent.isStopped = false;
+                UpdateDestination();
+            }
             return;
         }
 
-
-        if (distance > stoppingDistance + arriveEpsilon)
+        // Не игрок — дошёл?
+        if (distance <= stoppingDistance + 0.1f)
         {
-            // Поворачиваемся к цели
-            if (direction != Vector3.zero)
-            {
-                Quaternion targetRotation = Quaternion.LookRotation(direction);
-                transform.rotation = Quaternion.Slerp(
-                    transform.rotation,
-                    targetRotation,
-                    rotationSpeed * Time.deltaTime
-                );
-            }
-
-            // Ограничиваем шаг, чтобы не перескочить stoppingDistance
-            float maxStep = speed * Time.deltaTime;
-            float allowedStep = Mathf.Max(0f, distance - stoppingDistance);
-            float step = Mathf.Min(maxStep, allowedStep);
-
-            if (step > 0f)
-                transform.position += direction * step;
-        }
-        else
-        {
-            // Достигли цели (НЕ игрок)
             ZombieCustomer zombie = GetComponent<ZombieCustomer>();
             bool isAngry = zombie != null &&
                            zombie.currentState == ZombieCustomer.ZombieState.Angry;
@@ -183,145 +322,125 @@ public class SimpleZombieMovement : MonoBehaviour
             if (!isAngry)
             {
                 isMoving = false;
-                UpdateAnimMovement();
+                StopAgent();
                 OnReachedTarget();
-                return;
-            }
-        }
-
-        // Анти-пенетрация (оставляем, но теперь она почти не срабатывает)
-        if (selfCol != null && targetCol != null && !targetCol.isTrigger)
-        {
-            Vector3 dir;
-            float distPen;
-
-            if (Physics.ComputePenetration(
-                    selfCol, transform.position, transform.rotation,
-                    targetCol, targetCol.transform.position, targetCol.transform.rotation,
-                    out dir, out distPen))
-            {
-                transform.position += dir * (distPen + penetrationSkin);
             }
         }
     }
 
+    void StopAgent()
+    {
+        if (agent != null && agent.isOnNavMesh && !agent.isStopped)
+        {
+            agent.isStopped = true;
+            agent.velocity = Vector3.zero;
+        }
+    }
+
+    // ==================== АНИМАЦИЯ ====================
+
+    void UpdateAnimation()
+    {
+        if (animator == null) return;
+        if (!animator.isActiveAndEnabled) return;
+        if (animator.runtimeAnimatorController == null) return;
+
+        // Целевая скорость
+        float targetAnimSpeed = 0f;
+
+        if (isMoving && agent != null && agent.isOnNavMesh && !agent.isStopped)
+        {
+            float agentSpeed = agent.velocity.magnitude;
+
+            // Если агент движется — Walk, иначе Idle
+            if (agentSpeed > 0.1f)
+                targetAnimSpeed = 1f;
+            else
+                targetAnimSpeed = 0f;
+        }
+
+        // СГЛАЖИВАНИЕ — главное от дёрганья idle/walk
+        smoothSpeed = Mathf.MoveTowards(smoothSpeed, targetAnimSpeed, ANIM_SMOOTH_SPEED * Time.deltaTime);
+
+        if (!string.IsNullOrEmpty(speedParam))
+            animator.SetFloat(speedParam, smoothSpeed);
+
+        if (setIsMovingBool && !string.IsNullOrEmpty(isMovingParam))
+            animator.SetBool(isMovingParam, smoothSpeed > 0.1f);
+    }
+
+    // ==================== EVENTS ====================
+
     void OnReachedTarget()
     {
         ZombieCustomer zombie = GetComponent<ZombieCustomer>();
-        if (zombie == null)
-        {
-            Debug.LogWarning($"{gameObject.name}: Не найден компонент ZombieCustomer!");
-            return;
-        }
+        if (zombie == null) return;
 
-        // Важно: зомби ходит к разным целям (очередь/выдача/выход).
-        // Нельзя всегда вызывать ArrivedAtServicePoint().
         switch (zombie.currentState)
         {
             case ZombieCustomer.ZombieState.WalkingToQueue:
                 zombie.ArrivedAtServicePoint();
                 break;
-
             case ZombieCustomer.ZombieState.GoingToDelivery:
                 zombie.PickupItemFromPoint();
                 break;
-
             case ZombieCustomer.ZombieState.Angry:
-                // В агре целевая точка = игрок, тут не делаем ничего (урон обрабатывается в ZombieCustomer)
                 break;
-
             case ZombieCustomer.ZombieState.Leaving:
                 Destroy(gameObject);
                 break;
         }
     }
 
+    // ==================== PUBLIC ====================
+
+    // ==================== PUBLIC ====================
+
     public void SetTarget(Transform newTarget)
     {
-        if (newTarget != null)
+        if (newTarget == null)
         {
-            target = newTarget;
-            isMoving = true;
-            UpdateAnimMovement();
-            Debug.Log($"{gameObject.name}: Новая цель установлена: {target.name}");
+            Debug.LogError($"{gameObject.name}: null цель!");
+            return;
         }
-        else
+
+        target = newTarget;
+        isMoving = true;
+        smoothSpeed = 0f;
+
+        if (agent != null && agent.isOnNavMesh)
         {
-            Debug.LogError($"{gameObject.name}: Попытка установить null цель!");
+            agent.isStopped = false;
+            SetNavMeshDestination(newTarget.position);
         }
     }
 
+    // ЭТО ДОБАВЬ — публичная обёртка для ZombieCustomer
     public void UpdateAnimMovement()
     {
-        if (animator == null) return;
-        if (!animator.isActiveAndEnabled) return;
-        if (animator.runtimeAnimatorController == null) return;
-
-        // Если Animator на другом объекте (не на корне зомби), то этот MonoBehaviour
-        // может быть на другом transform и не знать, движется ли модель.
-        // Поэтому выставляем Speed по фактической скорости перемещения объекта, на котором висит animator.
-        Transform animTf = animator.transform;
-        float realSpeed = 0f;
-        if (_lastAnimPosInitialized)
-        {
-            realSpeed = Vector3.Distance(animTf.position, _lastAnimPos) / Mathf.Max(0.0001f, Time.deltaTime);
-        }
-        else
-        {
-            // Первый кадр: ещё нет предыдущей позиции, поэтому realSpeed=0 и Animator уходит в Idle.
-            // Если мы реально "должны двигаться" — форсим стартовое значение Speed.
-            if (isMoving && target != null)
-                realSpeed = Mathf.Max(0f, speed);
-        }
-        _lastAnimPos = animTf.position;
-        _lastAnimPosInitialized = true;
-
-        // Нормализуем скорость в диапазон 0..1 (Animator обычно использует пороги вроде 0.1).
-        float normalized = (speed > 0.0001f) ? (realSpeed / speed) : realSpeed;
-        float targetSpeed = Mathf.Clamp01(normalized);
-
-        // Анти-дребезг: около точки назначения возможны микросдвиги (penetration/ClosestPoint),
-        // из-за которых Speed прыгает вокруг порога и Animator быстро переключает Walk/Idle.
-        if (!isMoving)
-            targetSpeed = 0f;
-
-        // Speed (float)
-        if (!string.IsNullOrEmpty(speedParam))
-            animator.SetFloat(speedParam, targetSpeed);
-
-        // IsMoving (bool) — опционально, чтобы не ломать существующий Animator
-        if (setIsMovingBool && !string.IsNullOrEmpty(isMovingParam))
-            animator.SetBool(isMovingParam, targetSpeed > 0.05f);
+        UpdateAnimation();
     }
 
-    private Vector3 _lastAnimPos;
-    private bool _lastAnimPosInitialized = false;
-
-    // УДАЛЯЕМ OnControllerColliderHit - он был только для CharacterController
-    // Вместо него можно добавить простую проверку столкновений если нужно
+    // ==================== GIZMOS ====================
 
     void OnDrawGizmosSelected()
     {
-        // Визуализация в редакторе
         if (target != null)
         {
             Gizmos.color = Color.yellow;
             Gizmos.DrawLine(transform.position, target.position);
-            Gizmos.DrawWireSphere(target.position, 0.5f);
+            Gizmos.DrawWireSphere(target.position, 0.3f);
         }
-    }
 
-    void OnEnable()
-    {
-        // На старте/после включения задаём стартовую точку для расчёта скорости анимации,
-        // чтобы не получать 0 и не уходить в Idle на первые кадры.
-        if (animator == null)
-            animator = GetComponentInChildren<Animator>(true);
-
-        if (animator != null)
+        if (agent != null && agent.hasPath)
         {
-            _lastAnimPos = animator.transform.position;
-            _lastAnimPosInitialized = true;
+            Gizmos.color = Color.cyan;
+            Vector3[] corners = agent.path.corners;
+            for (int i = 0; i < corners.Length - 1; i++)
+                Gizmos.DrawLine(corners[i], corners[i + 1]);
         }
+
+        Gizmos.color = Color.red;
+        Gizmos.DrawWireSphere(transform.position, stoppingDistance);
     }
 }
